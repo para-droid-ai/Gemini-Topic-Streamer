@@ -1,35 +1,68 @@
-
 import { GoogleGenAI, GenerateContentResponse, GroundingChunk as GenAIGroundingChunk, Chat, Content } from "@google/genai";
 import { GEMINI_MODEL_NAME, GEMINI_TTS_API_ENDPOINT, GEMINI_TTS_MODEL_NAME, TTS_DEFAULT_VOICE } from '../constants';
 import { GroundingChunk, Stream, StreamUpdate } from '../types'; 
 
 let ai: GoogleGenAI | null = null;
-let currentApiKey: string | null = null;
+let activeInitializedKey: string | null = null; 
+let userProvidedApiKey: string | null = null; 
 
-const initializeGenAI = () => {
-  const apiKeyFromEnv = process.env.API_KEY;
-  if (apiKeyFromEnv) {
-    if (!ai || currentApiKey !== apiKeyFromEnv) {
-      ai = new GoogleGenAI({ apiKey: apiKeyFromEnv });
-      currentApiKey = apiKeyFromEnv;
-      console.log("Gemini API client initialized/re-initialized.");
+export const updateUserApiKey = (newKey: string | null): void => {
+  const oldEffectiveKey = userProvidedApiKey || process.env.API_KEY;
+  userProvidedApiKey = newKey;
+  const newEffectiveKey = userProvidedApiKey || process.env.API_KEY;
+
+  if (oldEffectiveKey !== newEffectiveKey || !ai) {
+    // Force re-initialization if the effective key changes, or if 'ai' was null
+    activeInitializedKey = null; // Clear the active key to ensure re-initialization
+    ai = null; // Set ai to null to trigger re-initialization by getAiClient
+    console.log("Gemini API key updated. Client will re-initialize on next call.");
+  }
+};
+
+const initializeGenAI = (): GoogleGenAI | null => {
+  const effectiveKey = userProvidedApiKey || process.env.API_KEY;
+
+  if (ai && activeInitializedKey === effectiveKey) {
+    return ai; 
+  }
+
+  if (effectiveKey) {
+    try {
+      ai = new GoogleGenAI({ apiKey: effectiveKey });
+      activeInitializedKey = effectiveKey;
+      console.log(`Gemini API client initialized with ${userProvidedApiKey ? 'user-provided' : 'environment'} key.`);
+      return ai;
+    } catch (error) {
+      console.error("Failed to initialize Gemini API client with key:", error);
+      ai = null;
+      activeInitializedKey = null;
+      return null;
     }
   } else {
     ai = null;
-    currentApiKey = null;
-    console.warn("API_KEY for Gemini is not configured. Gemini features will be disabled.");
+    activeInitializedKey = null;
+    // console.warn("Gemini API Key is not configured. Gemini features will be disabled."); // Warning handled by getAiClient
+    return null;
   }
-  return ai;
 };
 
-const getApiKey = (): string | null => {
-  if (!currentApiKey) {
-    const apiKeyFromEnv = process.env.API_KEY;
-    if (apiKeyFromEnv) {
-      currentApiKey = apiKeyFromEnv;
-    }
+const getAiClient = (): GoogleGenAI => {
+  const client = initializeGenAI(); // Ensures 'ai' is up-to-date
+  if (!client) {
+    throw new Error("Gemini API client is not initialized. API_KEY might be missing or invalid.");
   }
-  return currentApiKey;
+  return client;
+};
+
+export const isApiKeyEffectivelySet = (): boolean => {
+  return !!(userProvidedApiKey || process.env.API_KEY);
+};
+
+export const getActiveKeySource = (): 'user' | 'environment' | 'none' => {
+    if (userProvidedApiKey) return 'user';
+    // Check process.env only if it exists, to avoid errors in environments where it's undefined
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) return 'environment';
+    return 'none';
 }
 
 interface FetchStreamUpdatesResult {
@@ -49,10 +82,7 @@ export type PreviousContext = {
 } | null;
 
 export const fetchStreamUpdates = async (stream: Stream, previousContext?: PreviousContext): Promise<FetchStreamUpdatesResult> => {
-  const localAi = initializeGenAI();
-  if (!localAi) {
-    throw new Error("Gemini API client is not initialized. API_KEY might be missing.");
-  }
+  const localAi = getAiClient();
 
   let detailInstruction = "";
   switch (stream.detailLevel) {
@@ -222,12 +252,8 @@ If reasoning is requested via instructions to use <think> tags, ensure these tag
 
 
 export const createChatSession = (initialContext: string): Chat | null => {
-  const localAi = initializeGenAI();
-  if (!localAi) {
-    console.error("Gemini API client is not initialized for chat. API_KEY might be missing.");
-    return null;
-  }
-
+  const localAi = getAiClient();
+ 
   const history: Content[] = [
     {
       role: "user",
@@ -250,16 +276,13 @@ export const createChatSession = (initialContext: string): Chat | null => {
     return chat;
   } catch (error) {
     console.error("Error creating chat session with Gemini:", error);
-    return null;
+    return null; // Keep returning null as per original logic if chat creation fails
   }
 };
 
 export const sendMessageInChat = async (chat: Chat, message: string): Promise<string> => {
-  const localAi = initializeGenAI();
-  if (!localAi) {
-    throw new Error("Gemini API client is not initialized. API_KEY might be missing.");
-  }
- 
+  getAiClient(); // Ensures client is initialized, though 'chat' object already uses it.
+
   try {
     const response: GenerateContentResponse = await chat.sendMessage({ message });
     return response.text;
@@ -273,11 +296,8 @@ export const sendMessageInChat = async (chat: Chat, message: string): Promise<st
 };
 
 export const optimizePromptForStream = async (streamName: string, currentFocus: string): Promise<string> => {
-  const localAi = initializeGenAI();
-  if (!localAi) {
-    throw new Error("Gemini API client is not initialized. API_KEY might be missing.");
-  }
-
+  const localAi = getAiClient();
+  
   const prompt = `
 You are an expert prompt engineer.
 The user has a "Topic Stream" with a name and a "Focus Prompt" that will be used to generate regular updates using a large language model.
@@ -329,8 +349,12 @@ Return ONLY the revised "Focus Prompt" text. Do not include any other explanator
   }
 };
 
+const getApiKeyForTTS = (): string | null => {
+  return userProvidedApiKey || (typeof process !== 'undefined' && process.env && process.env.API_KEY) || null;
+}
+
 export const generateSpeechFromText = async (textToSpeak: string, voiceName: string = TTS_DEFAULT_VOICE): Promise<string> => {
-  const apiKey = getApiKey();
+  const apiKey = getApiKeyForTTS();
   if (!apiKey) {
     throw new Error("Gemini API Key is not configured. Cannot generate speech.");
   }

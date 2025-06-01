@@ -1,31 +1,37 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JSZip from 'jszip';
 import Sidebar from './components/Sidebar';
 import StreamView from './components/StreamView';
 import GridView from './components/GridView'; 
 import EditStreamModal from './components/EditStreamModal';
+import ApiKeyModal from './components/ApiKeyModal'; // New Import
 import { Stream, StreamUpdate, StreamContextPreference, AppBackup, StreamDetailLevel } from './types';
-import { fetchStreamUpdates, PreviousContext } from './services/geminiService';
+import { 
+    fetchStreamUpdates, 
+    PreviousContext, 
+    updateUserApiKey, // New Import
+    isApiKeyEffectivelySet, // New Import
+    getActiveKeySource // New Import
+} from './services/geminiService';
 import { 
     APP_NAME, 
     DEFAULT_TEMPERATURE, 
     DEFAULT_DETAIL_LEVEL, 
-    // DEFAULT_AUTO_UPDATE_ENABLED, // Removed
     DEFAULT_CONTEXT_PREFERENCE, 
     DEFAULT_ENABLE_REASONING,
     DEFAULT_THINKING_TOKEN_BUDGET,
-    DEFAULT_AUTO_THINKING_BUDGET 
+    DEFAULT_AUTO_THINKING_BUDGET,
+    USER_API_KEY_STORAGE_KEY // New Import
 } from './constants'; 
 import { 
     ArrowDownTrayIcon, ArrowUpTrayIcon, ListBulletIcon, TableCellsIcon, DocumentDuplicateIcon, 
-    ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon
+    ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon // Added KeyIcon
 } from './components/icons';
 import { convertToCSV, downloadFile } from './utils/exportUtils';
 
 
-const STREAMS_STORAGE_KEY = 'geminiTopicStreams_v5'; // Incremented version for new structure
-const UPDATES_STORAGE_KEY = 'geminiTopicUpdates_v5'; // Incremented version
+const STREAMS_STORAGE_KEY = 'geminiTopicStreams_v5';
+const UPDATES_STORAGE_KEY = 'geminiTopicUpdates_v5';
 
 type ViewMode = 'list' | 'grid';
 
@@ -40,7 +46,6 @@ const App: React.FC = () => {
         focus: s.focus || "General topics",
         temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
         detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
-        // autoUpdateEnabled: typeof s.autoUpdateEnabled === 'boolean' ? s.autoUpdateEnabled : DEFAULT_AUTO_UPDATE_ENABLED, // Removed
         contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
         enableReasoning: typeof s.enableReasoning === 'boolean' ? s.enableReasoning : DEFAULT_ENABLE_REASONING,
         autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
@@ -97,7 +102,10 @@ const App: React.FC = () => {
 
   const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({});
   const [error, setError] = useState<string | null>(null);
-  const [apiKeyAvailable, setApiKeyAvailable] = useState(true);
+  const [apiKeyAvailable, setApiKeyAvailable] = useState(false); // Updated by effect
+  const [apiKeySource, setApiKeySource] = useState<'user' | 'environment' | 'none'>('none'); // New state
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false); // New state
+
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); 
 
@@ -109,21 +117,23 @@ const App: React.FC = () => {
   const exportAllMenuRef = useRef<HTMLDivElement>(null); 
   const [showExportAllMenu, setShowExportAllMenu] = useState(false);
 
-
   const loadingStatesRef = useRef(loadingStates);
   useEffect(() => {
     loadingStatesRef.current = loadingStates;
   }, [loadingStates]);
 
-
+  // Effect to initialize API key from localStorage and set availability
   useEffect(() => {
-    if (typeof process === 'undefined' || !process.env || !process.env.API_KEY) {
-        console.warn("API_KEY for Gemini is not detected client-side. Service calls requiring it will fail if not properly configured in the execution environment.");
-        setApiKeyAvailable(false);
+    const storedUserApiKey = localStorage.getItem(USER_API_KEY_STORAGE_KEY);
+    if (storedUserApiKey) {
+      updateUserApiKey(storedUserApiKey); // Inform service
     } else {
-        setApiKeyAvailable(true);
+      updateUserApiKey(null); // Ensure service knows no user key initially
     }
+    setApiKeyAvailable(isApiKeyEffectivelySet());
+    setApiKeySource(getActiveKeySource());
   }, []);
+
 
   useEffect(() => {
     localStorage.setItem(STREAMS_STORAGE_KEY, JSON.stringify(streams));
@@ -143,6 +153,33 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const updateApiStatus = () => {
+    setApiKeyAvailable(isApiKeyEffectivelySet());
+    setApiKeySource(getActiveKeySource());
+  };
+
+  const handleSaveUserApiKey = (key: string) => {
+    localStorage.setItem(USER_API_KEY_STORAGE_KEY, key);
+    updateUserApiKey(key);
+    updateApiStatus();
+    setIsApiKeyModalOpen(false);
+    setError(null); // Clear previous errors
+    // Potentially re-fetch current stream if it had an error due to missing key
+    if (selectedStream && !loadingStatesRef.current[selectedStream.id]) {
+        fetchUpdates(selectedStream);
+    }
+  };
+
+  const handleClearUserApiKey = () => {
+    localStorage.removeItem(USER_API_KEY_STORAGE_KEY);
+    updateUserApiKey(null); // Service will fallback to env var if present
+    updateApiStatus();
+    // setError might be set if fallback also fails.
+    if (!isApiKeyEffectivelySet()) {
+        setError("API Key cleared and no fallback environment key found. Features requiring API key are disabled.");
+    }
+  };
+
 
   const fetchUpdates = useCallback(async (stream: Stream) => {
     if (!stream || !stream.id) {
@@ -154,7 +191,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!apiKeyAvailable) {
+    if (!isApiKeyEffectivelySet()) { // Use central check
       setError("Gemini API Key is not configured. Cannot fetch updates.");
       setLoadingStates(prev => ({ ...prev, [stream.id]: false })); 
       return;
@@ -200,7 +237,8 @@ const App: React.FC = () => {
     } finally {
       setLoadingStates(prev => ({ ...prev, [stream.id]: false }));
     }
-  }, [apiKeyAvailable, streamUpdates]); 
+  }, [streamUpdates]); // apiKeyAvailable removed as it's now checked via isApiKeyEffectivelySet
+
 
   const handleOpenAddModal = () => {
     setStreamToEdit(null); 
@@ -219,7 +257,6 @@ const App: React.FC = () => {
       focus: newStreamData.focus,
       temperature: newStreamData.temperature,
       detailLevel: newStreamData.detailLevel,
-      // autoUpdateEnabled: newStreamData.autoUpdateEnabled, // Removed
       contextPreference: newStreamData.contextPreference,
       enableReasoning: newStreamData.enableReasoning,
       autoThinkingBudget: newStreamData.autoThinkingBudget,
@@ -232,7 +269,7 @@ const App: React.FC = () => {
     setSelectedStreamId(newStream.id); 
     setViewMode('list'); 
     setError(null);
-    if (apiKeyAvailable) {
+    if (isApiKeyEffectivelySet()) {
       fetchUpdates(newStream); 
     } else {
         setError("API Key not configured. Cannot fetch updates for the new stream.");
@@ -277,11 +314,11 @@ const App: React.FC = () => {
         }
     }
 
-    if (apiKeyAvailable && shouldReFetch) {
+    if (isApiKeyEffectivelySet() && shouldReFetch) {
         if (!loadingStatesRef.current[updatedStream.id]) {
             fetchUpdates(updatedStream);
         }
-    } else if (!apiKeyAvailable && shouldReFetch) {
+    } else if (!isApiKeyEffectivelySet() && shouldReFetch) {
          setError("API Key not configured. Cannot fetch updates for the modified stream.");
     }
     handleCloseEditModal();
@@ -358,14 +395,14 @@ const App: React.FC = () => {
   };
 
   const handleRefreshStream = useCallback((stream: Stream) => {
-     if (!apiKeyAvailable) {
+     if (!isApiKeyEffectivelySet()) {
       setError("API Key not configured. Cannot refresh stream.");
       return;
     }
     if (stream && !loadingStatesRef.current[stream.id]) { 
         fetchUpdates(stream);
     }
-  }, [fetchUpdates, apiKeyAvailable]);
+  }, [fetchUpdates]); // apiKeyAvailable removed
 
   const handleReorderStreams = (draggedId: string, targetId: string, insertBefore: boolean) => {
     setStreams(prevStreams => {
@@ -405,15 +442,15 @@ const App: React.FC = () => {
   useEffect(() => {
     if (viewMode === 'list' && selectedStreamId) {
         const stream = streams.find(s => s.id === selectedStreamId);
-        if (apiKeyAvailable && stream && (!streamUpdates[selectedStreamId] || streamUpdates[selectedStreamId].length === 0)) {
+        if (isApiKeyEffectivelySet() && stream && (!streamUpdates[selectedStreamId] || streamUpdates[selectedStreamId].length === 0)) {
             if (!loadingStatesRef.current[selectedStreamId]) { 
                  fetchUpdates(stream);
             }
-        } else if (!apiKeyAvailable && stream) {
+        } else if (!isApiKeyEffectivelySet() && stream) { // Check apiKeyAvailable
              setError("API Key not configured. Cannot display or fetch updates for selected stream.");
         }
     }
-  }, [selectedStreamId, streams, streamUpdates, apiKeyAvailable, fetchUpdates, viewMode]);
+  }, [selectedStreamId, streams, streamUpdates, fetchUpdates, viewMode]); // apiKeyAvailable removed, re-evaluate if its absence affects logic
 
 
   const handleExportAllDataJSON = () => {
@@ -436,14 +473,13 @@ const App: React.FC = () => {
 
     const zip = new JSZip();
 
-    const streamHeaders = ['stream_id', 'name', 'focus', 'temperature', 'detail_level', /*'auto_update_enabled',*/ 'context_preference', 'enable_reasoning', 'auto_thinking_budget', 'thinking_token_budget', 'top_k', 'top_p', 'seed'];
+    const streamHeaders = ['stream_id', 'name', 'focus', 'temperature', 'detail_level', 'context_preference', 'enable_reasoning', 'auto_thinking_budget', 'thinking_token_budget', 'top_k', 'top_p', 'seed'];
     const streamsData = streams.map(s => ({
         stream_id: s.id,
         name: s.name,
         focus: s.focus,
         temperature: s.temperature,
         detail_level: s.detailLevel,
-        // auto_update_enabled: s.autoUpdateEnabled, // Removed
         context_preference: s.contextPreference,
         enable_reasoning: s.enableReasoning,
         auto_thinking_budget: s.autoThinkingBudget === undefined ? '' : s.autoThinkingBudget,
@@ -508,7 +544,6 @@ const App: React.FC = () => {
         focus: s.focus || "General topics",
         temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
         detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
-        // autoUpdateEnabled: typeof s.autoUpdateEnabled === 'boolean' ? s.autoUpdateEnabled : DEFAULT_AUTO_UPDATE_ENABLED, // Removed
         contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
         enableReasoning: typeof s.enableReasoning === 'boolean' ? s.enableReasoning : DEFAULT_ENABLE_REASONING,
         autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
@@ -679,6 +714,17 @@ const App: React.FC = () => {
           </div>
             <div className="flex items-center space-x-3">
                 <button
+                    onClick={() => setIsApiKeyModalOpen(true)}
+                    className={`flex items-center font-semibold py-1.5 px-3 rounded-md text-sm transition-colors shadow
+                                ${apiKeySource === 'user' ? 'bg-green-600 hover:bg-green-700 text-white' : 
+                                 (apiKeySource === 'environment' ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 
+                                  'bg-red-600 hover:bg-red-700 text-white')}`}
+                    title={apiKeySource === 'user' ? "API Key set by user" : (apiKeySource === 'environment' ? "Using environment API Key" : "Set API Key")}
+                >
+                    <KeyIcon className="w-4 h-4 mr-1.5" />
+                    API Key
+                </button>
+                <button
                     onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
                     className="flex items-center bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1.5 px-3 rounded-md text-sm transition-colors shadow"
                     title={viewMode === 'list' ? "Switch to Grid View" : "Switch to List View"}
@@ -771,7 +817,7 @@ const App: React.FC = () => {
               isLoading={isLoadingSelectedStream}
               error={error}
               onRefresh={handleRefreshStream}
-              apiKeyAvailable={apiKeyAvailable}
+              apiKeyAvailable={apiKeyAvailable} // This prop is still useful for UI hints
               onEditStream={handleOpenEditModal}
               onUpdateContextPreference={handleUpdateStreamContextPreference}
               onUpdateDetailLevel={handleUpdateStreamDetailLevel}
@@ -788,10 +834,18 @@ const App: React.FC = () => {
           onClose={isEditModalOpen ? handleCloseEditModal : handleCloseAddModal}
           stream={streamToEdit} 
           onSave={isEditModalOpen ? handleUpdateStream : handleAddStream} 
-          apiKeyAvailable={apiKeyAvailable}
+          apiKeyAvailable={apiKeyAvailable} // This prop is still useful for UI hints
           mode={(isEditModalOpen && streamToEdit) ? 'edit' : 'add'} 
         />
       )}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onSaveKey={handleSaveUserApiKey}
+        onClearKey={handleClearUserApiKey}
+        currentKeyExists={apiKeyAvailable}
+        currentKeySource={apiKeySource}
+      />
     </div>
   );
 };

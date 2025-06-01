@@ -1,4 +1,3 @@
-
 import { StreamContextPreference, StreamDetailLevel } from "./types"; // StreamFrequency removed
 
 export const GEMINI_MODEL_NAME = "gemini-2.5-flash-preview-04-17";
@@ -6,6 +5,8 @@ export const GEMINI_TTS_MODEL_NAME = "gemini-2.5-flash-preview-tts";
 export const GEMINI_TTS_API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL_NAME}:generateContent`;
 
 export const APP_NAME = "Gemini Topic Streamer";
+export const USER_API_KEY_STORAGE_KEY = 'geminiUserApiKey_v1';
+
 
 export const DISPLAY_MODEL_NAME = "Gemini 2.5 Flash"; // For UI display
 
