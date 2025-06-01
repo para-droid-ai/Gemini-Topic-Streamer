@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Topic Streamer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Custom scrollbar for webkit browsers */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #2d3748; /* bg-gray-800 */
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #4a5568; /* bg-gray-700 */
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #718096; /* bg-gray-600 */
+    }
+    /* Basic styling for markdown content */
+    .markdown-content h1 { font-size: 1.875rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; }
+    .markdown-content h2 { font-size: 1.5rem; font-weight: bold; margin-top: 0.875rem; margin-bottom: 0.4rem; }
+    .markdown-content h3 { font-size: 1.25rem; font-weight: bold; margin-top: 0.75rem; margin-bottom: 0.3rem; }
+    .markdown-content p { margin-bottom: 0.75rem; line-height: 1.6; }
+    .markdown-content ul, .markdown-content ol { margin-left: 1.5rem; margin-bottom: 0.75rem; list-style-position: outside; }
+    .markdown-content li { margin-bottom: 0.25rem; }
+    .markdown-content a { color: #63b3ed; text-decoration: underline; }
+    .markdown-content a:hover { color: #90cdf4; }
+    .markdown-content pre { background-color: #1a202c; color: #e2e8f0; padding: 1rem; border-radius: 0.25rem; overflow-x: auto; margin-bottom: 1rem; }
+    .markdown-content code { background-color: #2d3748; color: #e2e8f0; padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 3px; }
+    .markdown-content pre code { padding: 0; font-size: inherit; background-color: transparent; }
+    .markdown-content blockquote { border-left: 4px solid #4a5568; padding-left: 1rem; margin-left: 0; margin-bottom: 1rem; color: #a0aec0; }
+    .markdown-content table { 
+      border-collapse: collapse; 
+      width: 100%; 
+      margin-bottom: 1rem; 
+      display: block; /* Ensure table can scroll horizontally */
+      overflow-x: auto; /* Allow horizontal scrolling for wide tables */
+    }
+    .markdown-content th, .markdown-content td { border: 1px solid #4a5568; padding: 0.5rem; text-align: left; }
+    .markdown-content th { background-color: #2d3748; }
+
+    /* Rule to hide tables in non-maximized grid cards */
+    .hide-tables-in-grid-card .markdown-content table {
+        display: none !important;
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.0.0",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0",
+    "remark-gfm": "https://esm.sh/remark-gfm@^4.0.1",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "jszip": "https://esm.sh/jszip@3.10.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-gray-900 text-gray-100">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

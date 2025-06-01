@@ -1,0 +1,6 @@
+{
+  "name": "Gemini Topic Streamer",
+  "description": "An RSS-like feed creator and reader using the Gemini API to track trending topics and stories. Users can create topic streams, and the app fetches and displays updates in a markdown format with search-backed grounding.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
