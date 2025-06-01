@@ -92,7 +92,7 @@ Gemini Topic Streamer stands apart from standard web search and general AI chat 
 ## Getting Started
 
 1.  **API Key:** Ensure the `API_KEY` environment variable is correctly set up in your execution environment. The application relies on this to communicate with the Gemini API for both content generation and Text-to-Speech.
-2.  **Access:** Open the `index.html` file in a modern web browser.
+2.  Install dependencies: npm install
 3.  **Create a Stream:** Click the "+" icon in the sidebar (List View) or the "Add New Stream" button in the header (if no streams exist or from EditStreamModal).
     *   Give your stream a descriptive **Name**.
     *   Write a clear and detailed **Focus/Prompt Details** to guide the AI. Use the "Optimize Focus" button to let Gemini refine your prompt.
