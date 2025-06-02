@@ -7,9 +7,10 @@ import {
     DocumentDuplicateIcon, SparklesIcon, BackwardIcon, ArchiveBoxIcon, RefreshIcon, LoadingSpinner,
     ArrowsPointingOutIcon, ArrowsPointingInIcon, ChevronUpIcon,
     MagnifyingGlassIcon, ClipboardDocumentListIcon 
-    // BrainIcon import removed
 } from './icons';
 import MarkdownRenderer from './MarkdownRenderer';
+import { AVAILABLE_MODELS, DEFAULT_GEMINI_MODEL_ID } from '../constants';
+
 
 interface StreamGridCardProps {
   stream: Stream;
@@ -61,6 +62,11 @@ const StreamGridCard: React.FC<StreamGridCardProps> = ({
   const totalTokens = useMemo(() => {
     return streamUpdates.reduce((sum, update) => sum + (update.mainContentTokens || 0) + (update.reasoningTokens || 0), 0);
   }, [streamUpdates]);
+
+  const currentModelConfig = AVAILABLE_MODELS.find(m => m.id === (stream.modelName || DEFAULT_GEMINI_MODEL_ID)) || 
+                             AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
+  const displayModelName = currentModelConfig?.name || (stream.modelName || DEFAULT_GEMINI_MODEL_ID);
+
 
   const contextPreferenceButtonClass = (preference: StreamContextPreference) => 
     `p-1.5 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-offset-gray-700 ${
@@ -248,12 +254,15 @@ const StreamGridCard: React.FC<StreamGridCardProps> = ({
                     title="Use All Summaries"
                 > <ArchiveBoxIcon className="w-3.5 h-3.5" /> </button>
             </div>
-            <div className="flex items-center space-x-1">
-                {stream.enableReasoning && <span role="img" aria-label="brain" title="Reasoning Enabled" className="text-purple-400 text-sm">🧠</span>}
+            <div className="flex items-center space-x-1.5">
+                <span className="bg-pink-700 text-pink-100 px-1.5 py-0.5 rounded-full text-xs flex items-center" title={`Using model: ${displayModelName}`}>
+                    {displayModelName}
+                    {(stream.enableReasoning && currentModelConfig?.supportsThinkingConfig) ? <span role="img" aria-label="brain" title="Reasoning Enabled" className="ml-1 text-sm">🧠</span> : <span title="Reasoning Disabled/Not Supported" className="ml-1 text-sm opacity-60">🧠</span>}
+                </span>
                 {totalTokens > 0 && (
-                <div className="font-mono bg-gray-950 text-green-400 px-2 py-1 border border-gray-700 rounded text-xs flex items-center" title="Estimated total tokens for all updates in this stream">
-                    <TagIcon className="w-3 h-3 mr-1.5 text-green-500" />
-                    Tokens: {totalTokens.toLocaleString()}
+                <div className="font-mono bg-gray-950 text-green-400 px-1.5 py-0.5 border border-gray-700 rounded text-xs flex items-center" title="Estimated total tokens">
+                    <TagIcon className="w-3 h-3 mr-1 text-green-500" />
+                    {totalTokens.toLocaleString()}
                 </div>
                 )}
             </div>
@@ -277,7 +286,7 @@ const StreamGridCard: React.FC<StreamGridCardProps> = ({
           </div>
         )}
 
-        {streamUpdates.map((update, index) => {
+        {streamUpdates.slice(0, showFullCardContent ? streamUpdates.length : 1).map((update, index) => {
           const totalUpdateTokens = (update.mainContentTokens || 0) + (update.reasoningTokens || 0);
           return (
           <div key={update.id} className={`py-2 ${tableHidingClass}`}>
@@ -313,7 +322,7 @@ const StreamGridCard: React.FC<StreamGridCardProps> = ({
         })}
       </div>
       
-      {!isMaximized && streamUpdates.length > 0 && (
+      {!isMaximized && streamUpdates.length > 1 && (
         <div className={`flex-shrink-0 px-3 md:px-4 pt-2 pb-2 mt-auto ${showFullCardContent ? 'border-t border-gray-700' : ''}`}>
           <button 
             onClick={(e) => { e.stopPropagation(); onToggleAllSummariesExpansion(); }}

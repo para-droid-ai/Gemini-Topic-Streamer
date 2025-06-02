@@ -1,5 +1,13 @@
+
 import { GoogleGenAI, GenerateContentResponse, GroundingChunk as GenAIGroundingChunk, Chat, Content } from "@google/genai";
-import { GEMINI_MODEL_NAME, GEMINI_TTS_API_ENDPOINT, GEMINI_TTS_MODEL_NAME, TTS_DEFAULT_VOICE } from '../constants';
+import { 
+    GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, 
+    GEMINI_TTS_API_ENDPOINT, 
+    GEMINI_TTS_MODEL_NAME, 
+    TTS_DEFAULT_VOICE,
+    DEFAULT_GEMINI_MODEL_ID,
+    AVAILABLE_MODELS
+} from '../constants';
 import { GroundingChunk, Stream, StreamUpdate } from '../types'; 
 
 let ai: GoogleGenAI | null = null;
@@ -12,9 +20,8 @@ export const updateUserApiKey = (newKey: string | null): void => {
   const newEffectiveKey = userProvidedApiKey || process.env.API_KEY;
 
   if (oldEffectiveKey !== newEffectiveKey || !ai) {
-    // Force re-initialization if the effective key changes, or if 'ai' was null
-    activeInitializedKey = null; // Clear the active key to ensure re-initialization
-    ai = null; // Set ai to null to trigger re-initialization by getAiClient
+    activeInitializedKey = null; 
+    ai = null; 
     console.log("Gemini API key updated. Client will re-initialize on next call.");
   }
 };
@@ -41,13 +48,12 @@ const initializeGenAI = (): GoogleGenAI | null => {
   } else {
     ai = null;
     activeInitializedKey = null;
-    // console.warn("Gemini API Key is not configured. Gemini features will be disabled."); // Warning handled by getAiClient
     return null;
   }
 };
 
 const getAiClient = (): GoogleGenAI => {
-  const client = initializeGenAI(); // Ensures 'ai' is up-to-date
+  const client = initializeGenAI(); 
   if (!client) {
     throw new Error("Gemini API client is not initialized. API_KEY might be missing or invalid.");
   }
@@ -60,7 +66,6 @@ export const isApiKeyEffectivelySet = (): boolean => {
 
 export const getActiveKeySource = (): 'user' | 'environment' | 'none' => {
     if (userProvidedApiKey) return 'user';
-    // Check process.env only if it exists, to avoid errors in environments where it's undefined
     if (typeof process !== 'undefined' && process.env && process.env.API_KEY) return 'environment';
     return 'none';
 }
@@ -83,6 +88,9 @@ export type PreviousContext = {
 
 export const fetchStreamUpdates = async (stream: Stream, previousContext?: PreviousContext): Promise<FetchStreamUpdatesResult> => {
   const localAi = getAiClient();
+  const modelToUse = stream.modelName || DEFAULT_GEMINI_MODEL_ID;
+  const selectedModelConfig = AVAILABLE_MODELS.find(m => m.id === modelToUse) || AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
+
 
   let detailInstruction = "";
   switch (stream.detailLevel) {
@@ -94,7 +102,7 @@ export const fetchStreamUpdates = async (stream: Stream, previousContext?: Previ
       break;
     case 'research':
       detailInstruction = "Present an in-depth research report in well-structured Markdown format. Aim for a very comprehensive response, approximately 10000 words, exploring the topic with significant depth, including nuances, data, and detailed analysis.";
-      if (stream.enableReasoning) {
+      if (stream.enableReasoning && selectedModelConfig?.supportsThinkingConfig) { // Check if model supports thinking
         detailInstruction += `\nIMPORTANT: Utilize <think>...</think> XML-like tags extensively to expose your reasoning process. This could include your plan, information gathering strategy, key points to cover, and how you decide to structure the response. This thinking process should precede the main content for a given section or thought.`;
       }
       break;
@@ -180,19 +188,24 @@ If reasoning is requested via instructions to use <think> tags, ensure these tag
     if (stream.topP !== undefined && stream.topP !== null && !isNaN(stream.topP)) apiCallConfig.topP = stream.topP;
     if (stream.seed !== undefined && stream.seed !== null && !isNaN(stream.seed)) apiCallConfig.seed = stream.seed;
 
-    if (stream.enableReasoning === false) {
-      apiCallConfig.thinkingConfig = { thinkingBudget: 0 }; 
-    } else { 
-      if (stream.autoThinkingBudget === true || stream.autoThinkingBudget === undefined) {
+    // Conditionally add thinkingConfig only if the model supports it and reasoning is enabled
+    if (selectedModelConfig?.supportsThinkingConfig) {
+      if (stream.enableReasoning === false) {
+        apiCallConfig.thinkingConfig = { thinkingBudget: 0 }; 
       } else { 
-        if (stream.thinkingTokenBudget !== undefined) {
-          apiCallConfig.thinkingConfig = { thinkingBudget: stream.thinkingTokenBudget }; 
+        if (stream.autoThinkingBudget === true || stream.autoThinkingBudget === undefined) {
+          // No thinkingConfig, use model default budget
+        } else { 
+          if (stream.thinkingTokenBudget !== undefined) {
+            apiCallConfig.thinkingConfig = { thinkingBudget: stream.thinkingTokenBudget }; 
+          }
         }
       }
     }
+    // For models that don't support thinkingConfig, it's omitted.
 
     const response: GenerateContentResponse = await localAi.models.generateContent({
-      model: GEMINI_MODEL_NAME,
+      model: modelToUse, // Use the selected model for the stream
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: apiCallConfig,
     });
@@ -267,7 +280,7 @@ export const createChatSession = (initialContext: string): Chat | null => {
 
   try {
     const chat: Chat = localAi.chats.create({
-      model: GEMINI_MODEL_NAME,
+      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, // Chat uses default model for now
       history: history,
       config: {
         systemInstruction: "You are an intelligent assistant. Your primary goal is to help the user explore and understand the provided context in more detail. Answer questions based on the context. If the context doesn't provide an answer, say so, but you can also use your general knowledge to provide related information if explicitly asked or if it enhances the explanation without contradicting the context."
@@ -276,12 +289,12 @@ export const createChatSession = (initialContext: string): Chat | null => {
     return chat;
   } catch (error) {
     console.error("Error creating chat session with Gemini:", error);
-    return null; // Keep returning null as per original logic if chat creation fails
+    return null; 
   }
 };
 
 export const sendMessageInChat = async (chat: Chat, message: string): Promise<string> => {
-  getAiClient(); // Ensures client is initialized, though 'chat' object already uses it.
+  getAiClient(); 
 
   try {
     const response: GenerateContentResponse = await chat.sendMessage({ message });
@@ -324,7 +337,7 @@ Return ONLY the revised "Focus Prompt" text. Do not include any other explanator
 
   try {
     const response: GenerateContentResponse = await localAi.models.generateContent({
-      model: GEMINI_MODEL_NAME,
+      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, // Prompt optimization uses default model
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         temperature: 0.5, 

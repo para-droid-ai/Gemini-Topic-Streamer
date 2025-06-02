@@ -9,7 +9,7 @@ import {
     MagnifyingGlassIcon, ClipboardDocumentListIcon 
 } from './icons';
 import { createChatSession, sendMessageInChat } from '../services/geminiService';
-import { DISPLAY_MODEL_NAME } from '../constants';
+import { AVAILABLE_MODELS, DEFAULT_GEMINI_MODEL_ID } from '../constants';
 import type { Chat } from '@google/genai';
 import MarkdownRenderer from './MarkdownRenderer';
 import { convertToCSV, downloadFile } from '../utils/exportUtils';
@@ -260,7 +260,12 @@ const StreamView: React.FC<StreamViewProps> = ({
   };
 
   const getThinkingBudgetText = () => {
-    if (!stream || !stream.enableReasoning) return null; 
+    if (!stream) return null;
+    const modelConfig = AVAILABLE_MODELS.find(m => m.id === (stream.modelName || DEFAULT_GEMINI_MODEL_ID));
+    if (!modelConfig?.supportsThinkingConfig) return null; // No budget text if model doesn't support it
+
+    if (!stream.enableReasoning) return null; // Also hide if reasoning disabled by user
+    
     if (stream.autoThinkingBudget === true || stream.autoThinkingBudget === undefined) { 
       return "Think Budget: Auto";
     }
@@ -311,6 +316,10 @@ const StreamView: React.FC<StreamViewProps> = ({
   const chatPopupWidthClass = isSidebarCollapsed 
     ? 'md:w-[calc(100vw-4rem)] lg:w-[calc(100vw-5rem)]' 
     : 'md:w-[calc(100vw-320px-4rem)] lg:w-[calc(100vw-320px-5rem)]';
+
+  const currentModelConfig = AVAILABLE_MODELS.find(m => m.id === (stream.modelName || DEFAULT_GEMINI_MODEL_ID)) || 
+                             AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
+  const displayModelName = currentModelConfig?.name || (stream.modelName || DEFAULT_GEMINI_MODEL_ID);
 
 
   return (
@@ -430,9 +439,9 @@ const StreamView: React.FC<StreamViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2 text-xs mb-3">
             <span className="bg-sky-700 text-sky-100 px-2 py-0.5 rounded-full">Temp: {stream.temperature.toFixed(1)}</span>
-            <span className="bg-pink-700 text-pink-100 px-2 py-0.5 rounded-full flex items-center">
-                Model: {DISPLAY_MODEL_NAME}
-                {stream.enableReasoning ? <span role="img" aria-label="brain" title="Reasoning Enabled" className="ml-1.5 text-sm">🧠</span> : <span title="Reasoning Disabled" className="ml-1.5 text-sm opacity-60">🧠</span>}
+            <span className="bg-pink-700 text-pink-100 px-2 py-0.5 rounded-full flex items-center" title={`Using model: ${displayModelName}`}>
+                Model: {displayModelName}
+                {(stream.enableReasoning && currentModelConfig?.supportsThinkingConfig) ? <span role="img" aria-label="brain" title="Reasoning Enabled" className="ml-1.5 text-sm">🧠</span> : <span title="Reasoning Disabled or Not Supported by Model" className="ml-1.5 text-sm opacity-60">🧠</span>}
             </span>
             {thinkingBudgetText && (
                  <span className="bg-purple-700 text-purple-100 px-2 py-0.5 rounded-full" title={thinkingBudgetText}>
@@ -542,7 +551,7 @@ const StreamView: React.FC<StreamViewProps> = ({
             {!chatContextContent && apiKeyAvailable && (
                  <div className="text-center text-gray-400 text-sm p-4">Select an update to start a deep dive chat.</div>
             )}
-            {!apiKeyAvailable && !chatContextContent && ( // Specific message if API key is missing and trying to open chat
+            {!apiKeyAvailable && !chatContextContent && ( 
                 <div className="text-center text-yellow-400 text-sm p-4">API Key not configured. Chat functionality is disabled.</div>
             )}
             {chatMessages.map((msg) => (

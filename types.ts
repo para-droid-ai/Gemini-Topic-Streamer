@@ -1,4 +1,6 @@
 
+import { DEFAULT_GEMINI_MODEL_ID, AVAILABLE_MODELS } from "./constants";
+
 export interface GroundingChunkWeb {
   uri: string;
   title: string;
@@ -16,6 +18,8 @@ export interface GroundingChunk {
 // StreamFrequency removed
 export type StreamDetailLevel = 'brief' | 'comprehensive' | 'research';
 export type StreamContextPreference = 'none' | 'last' | 'all';
+export type AvailableGeminiModelId = typeof AVAILABLE_MODELS[number]['id'];
+
 
 export interface Stream {
   id: string;
@@ -23,14 +27,14 @@ export interface Stream {
   focus: string;
   temperature: number; // UI allows 0.0 to 2.0, API for text model expects 0.0-1.0
   detailLevel: StreamDetailLevel;
-  // autoUpdateEnabled: boolean; // Removed
   contextPreference: StreamContextPreference;
   enableReasoning: boolean; 
-  autoThinkingBudget?: boolean; // Added: true for auto/model default, false for manual slider
-  thinkingTokenBudget?: number; // Value from slider (0-8000) if autoThinkingBudget is false
+  autoThinkingBudget?: boolean; 
+  thinkingTokenBudget?: number; 
   topK?: number; 
   topP?: number; 
   seed?: number; 
+  modelName?: AvailableGeminiModelId; // Added: To store the selected Gemini model for this stream
 }
 
 export interface StreamUpdate {

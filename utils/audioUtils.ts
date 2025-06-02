@@ -73,14 +73,14 @@ function _cleanupCurrentSource() {
 
 function _stopTimer() {
     if (timeUpdateInterval) {
-        clearInterval(timeUpdateInterval);
+        window.clearInterval(timeUpdateInterval);
         timeUpdateInterval = null;
     }
 }
 
 function _startTimer() {
     _stopTimer();
-    timeUpdateInterval = setInterval(() => {
+    timeUpdateInterval = window.setInterval(() => {
         if (isPlayingGlobally && !isPausedGlobally && onTimeUpdateCallbackGlobal) {
             onTimeUpdateCallbackGlobal(getCurrentPlaybackTimeInternal());
         }

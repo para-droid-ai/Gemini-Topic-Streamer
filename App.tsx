@@ -1,17 +1,18 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JSZip from 'jszip';
 import Sidebar from './components/Sidebar';
 import StreamView from './components/StreamView';
 import GridView from './components/GridView'; 
 import EditStreamModal from './components/EditStreamModal';
-import ApiKeyModal from './components/ApiKeyModal'; // New Import
-import { Stream, StreamUpdate, StreamContextPreference, AppBackup, StreamDetailLevel } from './types';
+import ApiKeyModal from './components/ApiKeyModal'; 
+import { Stream, StreamUpdate, StreamContextPreference, AppBackup, StreamDetailLevel, AvailableGeminiModelId } from './types';
 import { 
     fetchStreamUpdates, 
     PreviousContext, 
-    updateUserApiKey, // New Import
-    isApiKeyEffectivelySet, // New Import
-    getActiveKeySource // New Import
+    updateUserApiKey, 
+    isApiKeyEffectivelySet, 
+    getActiveKeySource 
 } from './services/geminiService';
 import { 
     APP_NAME, 
@@ -21,17 +22,18 @@ import {
     DEFAULT_ENABLE_REASONING,
     DEFAULT_THINKING_TOKEN_BUDGET,
     DEFAULT_AUTO_THINKING_BUDGET,
-    USER_API_KEY_STORAGE_KEY // New Import
+    USER_API_KEY_STORAGE_KEY,
+    DEFAULT_GEMINI_MODEL_ID // New import
 } from './constants'; 
 import { 
     ArrowDownTrayIcon, ArrowUpTrayIcon, ListBulletIcon, TableCellsIcon, DocumentDuplicateIcon, 
-    ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon // Added KeyIcon
+    ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon 
 } from './components/icons';
 import { convertToCSV, downloadFile } from './utils/exportUtils';
 
 
-const STREAMS_STORAGE_KEY = 'geminiTopicStreams_v5';
-const UPDATES_STORAGE_KEY = 'geminiTopicUpdates_v5';
+const STREAMS_STORAGE_KEY = 'geminiTopicStreams_v6'; // Incremented version for modelName
+const UPDATES_STORAGE_KEY = 'geminiTopicUpdates_v6'; // Incremented version
 
 type ViewMode = 'list' | 'grid';
 
@@ -47,6 +49,7 @@ const App: React.FC = () => {
         temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
         detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
         contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
+        modelName: s.modelName || DEFAULT_GEMINI_MODEL_ID, // Add modelName
         enableReasoning: typeof s.enableReasoning === 'boolean' ? s.enableReasoning : DEFAULT_ENABLE_REASONING,
         autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
         thinkingTokenBudget: typeof s.thinkingTokenBudget === 'number' ? s.thinkingTokenBudget : DEFAULT_THINKING_TOKEN_BUDGET,
@@ -102,9 +105,9 @@ const App: React.FC = () => {
 
   const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({});
   const [error, setError] = useState<string | null>(null);
-  const [apiKeyAvailable, setApiKeyAvailable] = useState(false); // Updated by effect
-  const [apiKeySource, setApiKeySource] = useState<'user' | 'environment' | 'none'>('none'); // New state
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false); // New state
+  const [apiKeyAvailable, setApiKeyAvailable] = useState(false); 
+  const [apiKeySource, setApiKeySource] = useState<'user' | 'environment' | 'none'>('none'); 
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false); 
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); 
@@ -122,13 +125,12 @@ const App: React.FC = () => {
     loadingStatesRef.current = loadingStates;
   }, [loadingStates]);
 
-  // Effect to initialize API key from localStorage and set availability
   useEffect(() => {
     const storedUserApiKey = localStorage.getItem(USER_API_KEY_STORAGE_KEY);
     if (storedUserApiKey) {
-      updateUserApiKey(storedUserApiKey); // Inform service
+      updateUserApiKey(storedUserApiKey); 
     } else {
-      updateUserApiKey(null); // Ensure service knows no user key initially
+      updateUserApiKey(null); 
     }
     setApiKeyAvailable(isApiKeyEffectivelySet());
     setApiKeySource(getActiveKeySource());
@@ -163,8 +165,7 @@ const App: React.FC = () => {
     updateUserApiKey(key);
     updateApiStatus();
     setIsApiKeyModalOpen(false);
-    setError(null); // Clear previous errors
-    // Potentially re-fetch current stream if it had an error due to missing key
+    setError(null); 
     if (selectedStream && !loadingStatesRef.current[selectedStream.id]) {
         fetchUpdates(selectedStream);
     }
@@ -172,9 +173,8 @@ const App: React.FC = () => {
 
   const handleClearUserApiKey = () => {
     localStorage.removeItem(USER_API_KEY_STORAGE_KEY);
-    updateUserApiKey(null); // Service will fallback to env var if present
+    updateUserApiKey(null); 
     updateApiStatus();
-    // setError might be set if fallback also fails.
     if (!isApiKeyEffectivelySet()) {
         setError("API Key cleared and no fallback environment key found. Features requiring API key are disabled.");
     }
@@ -191,7 +191,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!isApiKeyEffectivelySet()) { // Use central check
+    if (!isApiKeyEffectivelySet()) { 
       setError("Gemini API Key is not configured. Cannot fetch updates.");
       setLoadingStates(prev => ({ ...prev, [stream.id]: false })); 
       return;
@@ -237,7 +237,7 @@ const App: React.FC = () => {
     } finally {
       setLoadingStates(prev => ({ ...prev, [stream.id]: false }));
     }
-  }, [streamUpdates]); // apiKeyAvailable removed as it's now checked via isApiKeyEffectivelySet
+  }, [streamUpdates]); 
 
 
   const handleOpenAddModal = () => {
@@ -258,6 +258,7 @@ const App: React.FC = () => {
       temperature: newStreamData.temperature,
       detailLevel: newStreamData.detailLevel,
       contextPreference: newStreamData.contextPreference,
+      modelName: newStreamData.modelName || DEFAULT_GEMINI_MODEL_ID,
       enableReasoning: newStreamData.enableReasoning,
       autoThinkingBudget: newStreamData.autoThinkingBudget,
       thinkingTokenBudget: newStreamData.thinkingTokenBudget,
@@ -303,6 +304,7 @@ const App: React.FC = () => {
             oldStream.detailLevel !== updatedStream.detailLevel ||
             oldStream.temperature !== updatedStream.temperature ||
             oldStream.contextPreference !== updatedStream.contextPreference ||
+            oldStream.modelName !== updatedStream.modelName || // Check model name change
             oldStream.enableReasoning !== updatedStream.enableReasoning ||
             oldStream.autoThinkingBudget !== updatedStream.autoThinkingBudget ||
             oldStream.thinkingTokenBudget !== updatedStream.thinkingTokenBudget ||
@@ -402,7 +404,7 @@ const App: React.FC = () => {
     if (stream && !loadingStatesRef.current[stream.id]) { 
         fetchUpdates(stream);
     }
-  }, [fetchUpdates]); // apiKeyAvailable removed
+  }, [fetchUpdates]); 
 
   const handleReorderStreams = (draggedId: string, targetId: string, insertBefore: boolean) => {
     setStreams(prevStreams => {
@@ -446,11 +448,11 @@ const App: React.FC = () => {
             if (!loadingStatesRef.current[selectedStreamId]) { 
                  fetchUpdates(stream);
             }
-        } else if (!isApiKeyEffectivelySet() && stream) { // Check apiKeyAvailable
+        } else if (!isApiKeyEffectivelySet() && stream) { 
              setError("API Key not configured. Cannot display or fetch updates for selected stream.");
         }
     }
-  }, [selectedStreamId, streams, streamUpdates, fetchUpdates, viewMode]); // apiKeyAvailable removed, re-evaluate if its absence affects logic
+  }, [selectedStreamId, streams, streamUpdates, fetchUpdates, viewMode]); 
 
 
   const handleExportAllDataJSON = () => {
@@ -473,7 +475,7 @@ const App: React.FC = () => {
 
     const zip = new JSZip();
 
-    const streamHeaders = ['stream_id', 'name', 'focus', 'temperature', 'detail_level', 'context_preference', 'enable_reasoning', 'auto_thinking_budget', 'thinking_token_budget', 'top_k', 'top_p', 'seed'];
+    const streamHeaders = ['stream_id', 'name', 'focus', 'temperature', 'detail_level', 'context_preference', 'model_name', 'enable_reasoning', 'auto_thinking_budget', 'thinking_token_budget', 'top_k', 'top_p', 'seed'];
     const streamsData = streams.map(s => ({
         stream_id: s.id,
         name: s.name,
@@ -481,6 +483,7 @@ const App: React.FC = () => {
         temperature: s.temperature,
         detail_level: s.detailLevel,
         context_preference: s.contextPreference,
+        model_name: s.modelName || DEFAULT_GEMINI_MODEL_ID,
         enable_reasoning: s.enableReasoning,
         auto_thinking_budget: s.autoThinkingBudget === undefined ? '' : s.autoThinkingBudget,
         thinking_token_budget: s.thinkingTokenBudget === undefined ? '' : s.thinkingTokenBudget,
@@ -545,6 +548,7 @@ const App: React.FC = () => {
         temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
         detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
         contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
+        modelName: s.modelName || DEFAULT_GEMINI_MODEL_ID, // Add modelName
         enableReasoning: typeof s.enableReasoning === 'boolean' ? s.enableReasoning : DEFAULT_ENABLE_REASONING,
         autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
         thinkingTokenBudget: typeof s.thinkingTokenBudget === 'number' ? s.thinkingTokenBudget : DEFAULT_THINKING_TOKEN_BUDGET,
@@ -817,7 +821,7 @@ const App: React.FC = () => {
               isLoading={isLoadingSelectedStream}
               error={error}
               onRefresh={handleRefreshStream}
-              apiKeyAvailable={apiKeyAvailable} // This prop is still useful for UI hints
+              apiKeyAvailable={apiKeyAvailable} 
               onEditStream={handleOpenEditModal}
               onUpdateContextPreference={handleUpdateStreamContextPreference}
               onUpdateDetailLevel={handleUpdateStreamDetailLevel}
@@ -834,7 +838,7 @@ const App: React.FC = () => {
           onClose={isEditModalOpen ? handleCloseEditModal : handleCloseAddModal}
           stream={streamToEdit} 
           onSave={isEditModalOpen ? handleUpdateStream : handleAddStream} 
-          apiKeyAvailable={apiKeyAvailable} // This prop is still useful for UI hints
+          apiKeyAvailable={apiKeyAvailable} 
           mode={(isEditModalOpen && streamToEdit) ? 'edit' : 'add'} 
         />
       )}

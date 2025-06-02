@@ -1,15 +1,16 @@
 
 import React, { useState, useEffect, Fragment } from 'react';
-import { Stream, StreamDetailLevel, StreamContextPreference } from '../types';
+import { Stream, StreamDetailLevel, StreamContextPreference, AvailableGeminiModelId } from '../types';
 import { XMarkIcon, SparklesIcon, LoadingSpinner, ChevronDownIcon, ChevronUpIcon } from './icons';
 import { 
     DEFAULT_TEMPERATURE, 
     DEFAULT_DETAIL_LEVEL, 
-    // DEFAULT_AUTO_UPDATE_ENABLED, // Removed
     DEFAULT_CONTEXT_PREFERENCE,
     DEFAULT_ENABLE_REASONING,
     DEFAULT_THINKING_TOKEN_BUDGET,
-    DEFAULT_AUTO_THINKING_BUDGET
+    DEFAULT_AUTO_THINKING_BUDGET,
+    AVAILABLE_MODELS,
+    DEFAULT_GEMINI_MODEL_ID
 } from '../constants';
 import { optimizePromptForStream } from '../services/geminiService';
 
@@ -27,8 +28,8 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
   const [focus, setFocus] = useState('');
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE);
   const [detailLevel, setDetailLevel] = useState<StreamDetailLevel>(DEFAULT_DETAIL_LEVEL);
-  // const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(DEFAULT_AUTO_UPDATE_ENABLED); // Removed
   const [contextPreference, setContextPreference] = useState<StreamContextPreference>(DEFAULT_CONTEXT_PREFERENCE);
+  const [modelName, setModelName] = useState<AvailableGeminiModelId>(DEFAULT_GEMINI_MODEL_ID);
   
   const [enableReasoning, setEnableReasoning] = useState(DEFAULT_ENABLE_REASONING);
   const [autoThinkingBudget, setAutoThinkingBudget] = useState(DEFAULT_AUTO_THINKING_BUDGET);
@@ -41,6 +42,10 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
   const [optimizingFocusError, setOptimizingFocusError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  const selectedModelConfig = AVAILABLE_MODELS.find(m => m.id === modelName) || AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
+  const supportsThinkingConfig = selectedModelConfig?.supportsThinkingConfig || false;
+
+
   useEffect(() => {
     if (isOpen) {
       if (mode === 'edit' && stream) {
@@ -48,8 +53,8 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
         setFocus(stream.focus);
         setTemperature(stream.temperature ?? DEFAULT_TEMPERATURE);
         setDetailLevel(stream.detailLevel ?? DEFAULT_DETAIL_LEVEL);
-        // setAutoUpdateEnabled(stream.autoUpdateEnabled ?? DEFAULT_AUTO_UPDATE_ENABLED); // Removed
         setContextPreference(stream.contextPreference ?? DEFAULT_CONTEXT_PREFERENCE);
+        setModelName(stream.modelName ?? DEFAULT_GEMINI_MODEL_ID);
         setEnableReasoning(stream.enableReasoning ?? DEFAULT_ENABLE_REASONING);
         setAutoThinkingBudget(stream.autoThinkingBudget ?? DEFAULT_AUTO_THINKING_BUDGET);
         setThinkingTokenBudget(stream.thinkingTokenBudget ?? DEFAULT_THINKING_TOKEN_BUDGET);
@@ -61,8 +66,8 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
         setFocus('');
         setTemperature(DEFAULT_TEMPERATURE);
         setDetailLevel(DEFAULT_DETAIL_LEVEL);
-        // setAutoUpdateEnabled(DEFAULT_AUTO_UPDATE_ENABLED); // Removed
         setContextPreference(DEFAULT_CONTEXT_PREFERENCE);
+        setModelName(DEFAULT_GEMINI_MODEL_ID);
         setEnableReasoning(DEFAULT_ENABLE_REASONING);
         setAutoThinkingBudget(DEFAULT_AUTO_THINKING_BUDGET);
         setThinkingTokenBudget(DEFAULT_THINKING_TOKEN_BUDGET);
@@ -72,7 +77,6 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
       }
       setIsOptimizingFocus(false);
       setOptimizingFocusError(null);
-      //setShowAdvanced(false); // Keep advanced open if user had it open
     }
   }, [isOpen, stream, mode]);
 
@@ -86,11 +90,11 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
       focus: focus.trim(),
       temperature,
       detailLevel,
-      // autoUpdateEnabled, // Removed
       contextPreference,
-      enableReasoning,
-      autoThinkingBudget,
-      thinkingTokenBudget: autoThinkingBudget ? 0 : thinkingTokenBudget, // Store 0 if auto, otherwise slider value
+      modelName,
+      enableReasoning: supportsThinkingConfig ? enableReasoning : false, // Store false if model doesn't support thinking
+      autoThinkingBudget: supportsThinkingConfig ? autoThinkingBudget : true, // Default to auto if not supported
+      thinkingTokenBudget: supportsThinkingConfig ? (autoThinkingBudget ? 0 : thinkingTokenBudget) : 0,
       topK: topK !== undefined && !isNaN(topK) ? Math.max(1, topK) : undefined,
       topP: topP !== undefined && !isNaN(topP) ? Math.min(1, Math.max(0, topP)) : undefined,
       seed: seed !== undefined && !isNaN(seed) ? seed : undefined,
@@ -123,7 +127,8 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
 
   if (!isOpen) return null;
   const modalTitle = mode === 'edit' && stream ? `Edit Stream: ${stream.name}` : 'Add New Stream';
-  const sliderDisabled = autoThinkingBudget || !enableReasoning;
+  const reasoningControlsDisabled = !supportsThinkingConfig;
+  const thinkingSliderDisabled = autoThinkingBudget || reasoningControlsDisabled || !enableReasoning;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
@@ -148,50 +153,80 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
             </button>
             {optimizingFocusError && <p className="mt-1.5 text-xs text-red-400">{optimizingFocusError}</p>}
           </div>
+
+          <div>
+            <label htmlFor="modalModelName" className="block text-sm font-medium text-gray-300">AI Model</label>
+            <select 
+              id="modalModelName" 
+              value={modelName} 
+              onChange={(e) => setModelName(e.target.value as AvailableGeminiModelId)} 
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-100"
+            >
+              {AVAILABLE_MODELS.map(model => (
+                <option key={model.id} value={model.id}>{model.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label htmlFor="modalStreamTemperature" className="block text-sm font-medium text-gray-300">Model Temperature: <span className="font-normal text-gray-400">({temperature.toFixed(1)})</span></label>
             <input type="range" id="modalStreamTemperature" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="mt-1 block w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
           </div>
-           <div className="flex items-center justify-between">
-            <label htmlFor="modalEnableReasoning" className="text-sm font-medium text-gray-300">Enable Model Reasoning (Thinking)</label>
-            <button type="button" onClick={() => setEnableReasoning(!enableReasoning)} className={`${enableReasoning ? 'bg-green-600' : 'bg-gray-600'} relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800`} role="switch" aria-checked={enableReasoning}>
-              <span className={`${enableReasoning ? 'translate-x-5' : 'translate-x-0'} inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`} />
-            </button>
-          </div>
-          
-          {enableReasoning && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                  <label htmlFor="modalThinkingTokenBudget" className="block text-sm font-medium text-gray-300">
-                  Thinking Token Budget: <span className="font-normal text-gray-400">({autoThinkingBudget ? "Auto" : (thinkingTokenBudget === 0 ? "Off" : thinkingTokenBudget.toLocaleString())})</span>
-                  </label>
-                  <div className="flex items-center">
-                      <input 
-                          type="checkbox" 
-                          id="modalAutoThinkingBudget" 
-                          checked={autoThinkingBudget} 
-                          onChange={(e) => setAutoThinkingBudget(e.target.checked)}
-                          className="h-4 w-4 text-purple-600 border-gray-500 bg-gray-700 rounded focus:ring-purple-500"
-                      />
-                      <label htmlFor="modalAutoThinkingBudget" className="ml-1.5 text-sm text-gray-300">Auto</label>
-                  </div>
-              </div>
-              <input 
-                type="range" 
-                id="modalThinkingTokenBudget" 
-                min="0" 
-                max="8000" 
-                step="100" 
-                value={thinkingTokenBudget} 
-                onChange={(e) => setThinkingTokenBudget(parseInt(e.target.value, 10))} 
-                className={`mt-1 block w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer ${autoThinkingBudget ? 'opacity-50 cursor-not-allowed' : 'accent-purple-500'}`}
-                disabled={autoThinkingBudget}
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                  "Auto" uses model default. Uncheck "Auto" for manual control: 0 means budget is Off, &gt;0 sets specific budget.
-              </p>
+
+          <div className={`p-3 rounded-md ${reasoningControlsDisabled ? 'bg-gray-700 opacity-60' : 'bg-gray-750'}`}>
+            <div className="flex items-center justify-between">
+              <label htmlFor="modalEnableReasoning" className={`text-sm font-medium ${reasoningControlsDisabled ? 'text-gray-500' : 'text-gray-300'}`}>
+                Enable Model Reasoning (Thinking)
+                {!supportsThinkingConfig && <span className="text-xs text-yellow-400 ml-1">(Not supported by current model)</span>}
+              </label>
+              <button 
+                type="button" 
+                onClick={() => setEnableReasoning(!enableReasoning)} 
+                className={`${(enableReasoning && !reasoningControlsDisabled) ? 'bg-green-600' : 'bg-gray-600'} relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800 ${reasoningControlsDisabled ? 'cursor-not-allowed' : ''}`} 
+                role="switch" 
+                aria-checked={enableReasoning}
+                disabled={reasoningControlsDisabled}
+              >
+                <span className={`${(enableReasoning && !reasoningControlsDisabled) ? 'translate-x-5' : 'translate-x-0'} inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`} />
+              </button>
             </div>
-          )}
+            
+            {(enableReasoning && !reasoningControlsDisabled) && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="modalThinkingTokenBudget" className={`block text-sm font-medium ${reasoningControlsDisabled ? 'text-gray-500' : 'text-gray-300'}`}>
+                    Thinking Token Budget: <span className="font-normal text-gray-400">({autoThinkingBudget ? "Auto" : (thinkingTokenBudget === 0 ? "Off" : thinkingTokenBudget.toLocaleString())})</span>
+                    </label>
+                    <div className="flex items-center">
+                        <input 
+                            type="checkbox" 
+                            id="modalAutoThinkingBudget" 
+                            checked={autoThinkingBudget} 
+                            onChange={(e) => setAutoThinkingBudget(e.target.checked)}
+                            className={`h-4 w-4 text-purple-600 border-gray-500 bg-gray-700 rounded focus:ring-purple-500 ${reasoningControlsDisabled ? 'cursor-not-allowed' : ''}`}
+                            disabled={reasoningControlsDisabled}
+                        />
+                        <label htmlFor="modalAutoThinkingBudget" className={`ml-1.5 text-sm ${reasoningControlsDisabled ? 'text-gray-500' : 'text-gray-300'}`}>Auto</label>
+                    </div>
+                </div>
+                <input 
+                  type="range" 
+                  id="modalThinkingTokenBudget" 
+                  min="0" 
+                  max="8000" 
+                  step="100" 
+                  value={thinkingTokenBudget} 
+                  onChange={(e) => setThinkingTokenBudget(parseInt(e.target.value, 10))} 
+                  className={`mt-1 block w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer ${thinkingSliderDisabled ? 'opacity-50 cursor-not-allowed' : 'accent-purple-500'}`}
+                  disabled={thinkingSliderDisabled}
+                />
+                <p className={`text-xs mt-1 ${reasoningControlsDisabled ? 'text-gray-500' : 'text-gray-400'}`}>
+                    "Auto" uses model default. Uncheck "Auto" for manual control: 0 means budget is Off, &gt;0 sets specific budget.
+                </p>
+              </div>
+            )}
+          </div>
+
 
           <div>
             <label htmlFor="modalStreamDetailLevel" className="block text-sm font-medium text-gray-300">Detail Level</label>
@@ -212,12 +247,6 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
               <option value="none">Fresh (No Context)</option> <option value="last">Use Last Summary</option> <option value="all">Use All Summaries</option>
             </select>
           </div>
-          {/*
-          <div className="flex items-center">
-            <input id="modalAutoUpdateEnabled" type="checkbox" checked={autoUpdateEnabled} onChange={(e) => setAutoUpdateEnabled(e.target.checked)} className="h-4 w-4 text-blue-600 border-gray-600 bg-gray-700 rounded focus:ring-blue-500" />
-            <label htmlFor="modalAutoUpdateEnabled" className="ml-2 block text-sm text-gray-300">Enable Auto-Updates (scheduler not implemented)</label>
-          </div>
-          */}
           
           <div className="pt-2">
             <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center justify-between w-full text-sm font-medium text-gray-300 hover:text-white">
