@@ -80,12 +80,7 @@ This application empowers users to:
 ## Getting Started
 
 1.  **API Key:** Ensure `API_KEY` environment variable is set.
-2.  **Access:** Open `index.html`.
-3.  **Create a Stream:**
-    *   Provide Name, Focus Prompt (use "Optimize Focus").
-    *   **Select an AI Model.**
-    *   Adjust Temperature, Detail Level, Context, Reasoning/Thinking (if supported by model).
-4.  **Fetch Updates & Explore.**
+2. TBD
 
 ## Technology Stack
 
