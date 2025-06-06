@@ -1,4 +1,3 @@
-
 # TODO List & Project Tracking: Gemini Topic Streamer
 
 This document tracks the development process, outstanding tasks, potential issues, and future improvements for the Gemini Topic Streamer application.
@@ -50,6 +49,8 @@ This section outlines the assumed steps taken before the application's current s
     *   [x] Displaying stream updates.
     *   [x] Local storage persistence for streams and updates.
     *   [x] Text-to-Speech (TTS) integration for reading updates, including playback controls (play/pause, stop, seek, speed) and audio export.
+    *   [x] Chat functionality for "Deep Dive" with Google Search grounding.
+    *   [x] Pinning chat messages to provide context for stream updates.
 
 ## 2. Future TODOs / Enhancements
 
@@ -115,6 +116,14 @@ This section outlines the assumed steps taken before the application's current s
 *   [ ] **Server-Side TTS Caching:** Cache generated TTS audio on the server to reduce API calls for popular content if shared.
 
 ### Technical & Development
+*   [x] **Refined Pinned Chat Context Logic:**
+    *   **Implementation:** Modified `services/geminiService.ts` so that pinned chat messages are only included in the `fetchStreamUpdates` prompt if the stream's `contextPreference` for past stream updates is 'last' or 'all'.
+    *   **Documentation:** Updated `README.md`, `docs/ROADMAP.md`, and this file (`docs/TODO.md`) to reflect this conditional behavior.
+    *   **Testing Considerations:**
+        *   Verify that pinned messages are NOT sent if `contextPreference` is 'none'.
+        *   Verify that pinned messages ARE sent if `contextPreference` is 'last' and pinned messages exist.
+        *   Verify that pinned messages ARE sent if `contextPreference` is 'all' and pinned messages exist.
+        *   Verify that pinned messages are correctly formatted in the prompt when included.
 *   [ ] **Comprehensive Testing:**
     *   [ ] Unit tests for utility functions (audioUtils, textUtils) and individual components.
     *   [ ] Integration tests for user flows (e.g., creating a stream, fetching an update, TTS playback).
@@ -132,15 +141,15 @@ This section outlines the assumed steps taken before the application's current s
     *   [ ] Improve inline code comments and update documentation.
 *   [ ] **State Management Review:** For larger scale, consider a more robust state management library (e.g., Zustand, Redux Toolkit) if `useState` and prop drilling become too complex.
 
-## 3. Issue Tracking
+## 3. Issue Tracking / Design Changes
 
-*Use this section to log specific bugs or issues as they are discovered.*
-
-| ID  | Severity | Description                                                      | Status      | Assigned To | Notes                                                                              |
-|-----|----------|------------------------------------------------------------------|-------------|-------------|------------------------------------------------------------------------------------|
-| #001| Minor    | Example: Grid view card text overflows on X screen                | Open        | Dev Team    | Occurs when stream name is excessively long                                        |
-| #002| Medium   | Stream deletion in Sidebar was unreliable due to `window.confirm`. | Resolved    | Dev Team    | Removed `window.confirm` from delete flow. Deletion is now immediate (Sidebar.tsx). |
-|     |          |                                                                  |             |             |                                                                                    |
+| ID  | Type    | Description                                                                                                                                    | Status      | Assigned To | Notes                                                                                                                                                                                                |
+|-----|---------|------------------------------------------------------------------------------------------------------------------------------------------------|-------------|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| #001| Minor   | Example: Grid view card text overflows on X screen                                                                                               | Open        | Dev Team    | Occurs when stream name is excessively long                                                                                                                                                            |
+| #002| Medium  | Stream deletion in Sidebar was unreliable due to `window.confirm`.                                                                               | Resolved    | Dev Team    | Removed `window.confirm` from delete flow. Deletion is now immediate (Sidebar.tsx).                                                                                                                    |
+| #003| Design  | Pinned chat messages were always included in stream update context. Changed to be conditional based on stream's `contextPreference` ('last'/'all'). | Resolved    | Dev Team    | This makes the pinned chat context behavior consistent with how stream update context is handled. If stream context is 'none', pinned chats are also excluded. Implemented in `services/geminiService.ts`. |
+| #004| UX      | Pinned chat messages not consistently visible in chat when starting a new "Deep Dive".                                                         | Resolved    | Dev Team    | Adjusted `StreamView.tsx` (`handleStartDeepDiveChat`) to always prepend pinned messages to the chat display when a new deep dive session for an update is initiated. Ensures they are visible for review. |
+|     |         |                                                                                                                                                |             |             |                                                                                                                                                                                                      |
 
 ## 4. Troubleshooting Performed
 
@@ -162,5 +171,5 @@ This section outlines the assumed steps taken before the application's current s
 
 *   [ ] **Prioritize:** Select 2-3 high-impact UI/UX improvements from the TODO list (e.g., TTS control refinement, theming options).
 *   [ ] **User Feedback:** If possible, gather feedback from initial users on current functionality, including TTS.
-*   [ ] **Testing:** Start implementing basic unit tests for key utility functions (e.g., `exportUtils.ts`, `textUtils.ts`, `audioUtils.ts`).
+*   [ ] **Testing:** Start implementing basic unit tests for key utility functions (e.g., `exportUtils.ts`, `textUtils.ts`, `audioUtils.ts`), including tests for the new conditional pinned chat context logic.
 *   [ ] **Documentation:** Ensure `README.md` and `ROADMAP.md` are up-to-date with any immediate decisions and reflect recent changes.

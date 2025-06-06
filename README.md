@@ -22,11 +22,12 @@ This application empowers users to:
 4.  **Listen to Updates:** Generate and play Text-to-Speech (TTS) audio for stream updates, with controls for play/pause, seek, speed adjustment, stop, and audio export (WAV).
 5.  **Control Information Flow:**
     *   **Detail Level:** Choose between 'brief', 'comprehensive', or 'research' level reports (approx. 1k, 5k, 10k words respectively).
-    *   **Contextual Awareness:** Opt for fresh updates, or instruct the AI to consider the last update or all previous updates to build upon existing knowledge and avoid redundancy.
+    *   **Contextual Awareness (Stream Updates):** Opt for fresh updates ('none'), or instruct the AI to consider the last stream update ('last') or all previous stream updates ('all') to build upon existing knowledge and avoid redundancy.
+    *   **Pinned Chat Context:** Manually pin important messages from "Deep Dive" chat sessions. These pinned messages are included in the prompt for new stream updates *only if* the stream's `contextPreference` (for past stream updates) is set to 'last' or 'all'. If `contextPreference` is 'none', pinned chat messages are omitted.
     *   **Model Parameters:** Fine-tune Temperature, Top-K, Top-P, and Seed for nuanced control over the AI's output.
     *   **Reasoning Transparency:** For 'research' level and compatible models (currently `gemini-2.5-flash-preview-04-17`), enable "thinking" to see the AI's underlying thought process. This can be set to an automatic budget or a specific token budget. For other models, this setting is ignored.
 6.  **Consume Content Efficiently:** Updates are presented in clean, readable Markdown format, and can also be listened to.
-7.  **Explore Further with "Deep Dive" Chat:** Engage in a contextual chat session based on any specific stream update to ask follow-up questions or clarify details.
+7.  **Explore Further with "Deep Dive" Chat:** Engage in a contextual chat session based on any specific stream update to ask follow-up questions or clarify details. This chat also uses Google Search grounding.
 8.  **Manage & Organize:**
     *   View streams in a detailed list or a summarized grid view.
     *   Edit, delete, and reorder streams.
@@ -41,7 +42,8 @@ This application empowers users to:
     *   The selected `modelName` for the stream.
     *   Instructions for the desired detail level and Markdown formatting.
     *   System instructions for the AI's role.
-    *   Optionally, the content of previous updates (based on context preference).
+    *   **Conditionally, User-Pinned Chat Context:** If `stream.contextPreference` is 'last' or 'all', any chat messages pinned by the user for this stream are included.
+    *   Optionally, the content of previous *stream updates* (based on `stream.contextPreference`).
     *   Configuration for `temperature`, `topK`, `topP`, `seed`.
     *   **Conditionally**, if the selected model is `gemini-2.5-flash-preview-04-17` and reasoning is enabled, `thinkingConfig` is included. For other models, `thinkingConfig` is omitted as per guidelines.
     *   Crucially, it enables `googleSearch` for grounding.
@@ -56,9 +58,9 @@ This application empowers users to:
 *   **Proactive & Curated Information Flow:** Builds a narrative on topics over time.
 *   **Multi-Modal Consumption:** Read Markdown or listen via TTS.
 *   **Depth, Synthesis & Structure:** Produces in-depth, structured reports.
-*   **Evolving Contextual Understanding:** Focuses on novel information.
+*   **Evolving Contextual Understanding:** Focuses on novel information, with explicit control over past stream update context and conditional pinned chat context.
 *   **Transparent AI Reasoning (Conditional):** "Thinking" feature available for compatible models.
-*   **Focused Exploration with Contextual Chat:** Targeted follow-up on updates.
+*   **Focused Exploration with Contextual Chat:** Targeted follow-up on updates with search grounding.
 *   **Data Ownership & Portability:** Local storage and comprehensive export.
 *   **Customization:** Extensive control over detail, context, and model parameters.
 
@@ -66,11 +68,11 @@ This application empowers users to:
 
 *   **Stream Creation & Management.**
 *   **Selectable AI Models per Stream.**
-*   **Customizable Update Generation:** Detail Level, Context, Temperature, Reasoning (conditional), Thinking Budget (conditional), Top-K, Top-P, Seed.
+*   **Customizable Update Generation:** Detail Level, Context settings for past stream updates (which also dictate if pinned chat messages are included), Temperature, Reasoning display (conditional), Thinking Budget (conditional), Top-K, Top-P, Seed.
 *   **Text-to-Speech (TTS) with Playback Controls & Export.**
 *   **Rich Markdown Rendering.**
-*   **Google Search Grounding.**
-*   **"Deep Dive" Chat.**
+*   **Google Search Grounding (for stream updates and chat).**
+*   **"Deep Dive" Chat with Pinning Functionality.**
 *   **Data Export & Import (JSON, TXT, MD, CSV, WAV).**
 *   **Multiple Views (List & Grid).**
 *   **Responsive Design.**
@@ -79,8 +81,13 @@ This application empowers users to:
 
 ## Getting Started
 
-1.  **API Key:** Ensure `API_KEY` environment variable is set.
-2. TBD
+1.  **API Key:** Ensure `API_KEY` environment variable is set or provide one via the UI.
+2.  **Access:** Open `index.html`.
+3.  **Create a Stream:**
+    *   Provide Name, Focus Prompt (use "Optimize Focus").
+    *   **Select an AI Model.**
+    *   Adjust Temperature, Detail Level, Context (for stream updates/pinned chat), Reasoning/Thinking (if supported by model).
+4.  **Fetch Updates & Explore.**
 
 ## Technology Stack
 

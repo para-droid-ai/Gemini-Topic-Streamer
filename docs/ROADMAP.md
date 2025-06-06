@@ -1,4 +1,3 @@
-
 # Gemini Topic Streamer: Product Roadmap
 
 ## Vision
@@ -22,6 +21,7 @@ To establish Gemini Topic Streamer as a premier tool for individuals and teams s
     *   **Focus Prompt Assistance:**
         *   Provide examples or templates for effective focus prompts.
         *   Refine the "Optimize Focus" feature for better results.
+    *   **Conditional Pinned Chat Context:** Pinned chat messages are included in the prompt for new stream updates *only if* the stream's `contextPreference` for past stream updates is 'last' or 'all'.
     *   **Basic Client-Side Scheduling PoC:**
         *   Experiment with simple client-side timers for stream refresh reminders or "best-effort" auto-refresh (clearly communicating limitations).
 *   **Data Management:**

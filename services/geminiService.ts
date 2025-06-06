@@ -8,7 +8,7 @@ import {
     DEFAULT_GEMINI_MODEL_ID,
     AVAILABLE_MODELS
 } from '../constants';
-import { GroundingChunk, Stream, StreamUpdate } from '../types'; 
+import { GroundingChunk, Stream, StreamUpdate, PinnedChatMessage } from '../types'; 
 
 let ai: GoogleGenAI | null = null;
 let activeInitializedKey: string | null = null; 
@@ -91,7 +91,6 @@ export const fetchStreamUpdates = async (stream: Stream, previousContext?: Previ
   const modelToUse = stream.modelName || DEFAULT_GEMINI_MODEL_ID;
   const selectedModelConfig = AVAILABLE_MODELS.find(m => m.id === modelToUse) || AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
 
-
   let detailInstruction = "";
   switch (stream.detailLevel) {
     case 'brief':
@@ -102,19 +101,21 @@ export const fetchStreamUpdates = async (stream: Stream, previousContext?: Previ
       break;
     case 'research':
       detailInstruction = "Present an in-depth research report in well-structured Markdown format. Aim for a very comprehensive response, approximately 10000 words, exploring the topic with significant depth, including nuances, data, and detailed analysis.";
-      if (stream.enableReasoning && selectedModelConfig?.supportsThinkingConfig) { // Check if model supports thinking
-        detailInstruction += `\nIMPORTANT: Utilize <think>...</think> XML-like tags extensively to expose your reasoning process. This could include your plan, information gathering strategy, key points to cover, and how you decide to structure the response. This thinking process should precede the main content for a given section or thought.`;
-      }
       break;
     default: 
       detailInstruction = "Present the output in well-structured Markdown format. Aim for a response that is approximately 5000 words, covering multiple facets of the topic extensively.";
       break;
   }
 
+  // Always add the reasoning prompt if the mode is 'request'
+  if (stream.reasoningMode === 'request') {
+    detailInstruction += `\nIMPORTANT: Utilize <think>...</think> XML-like tags extensively to expose your reasoning process. This could include your plan, information gathering strategy, key points to cover, and how you decide to structure the response. This thinking process should precede the main content for a given section or thought.`;
+  }
+
   let contextPreamble = "";
   let contextInstruction = "";
 
-  if (previousContext) {
+  if (previousContext) { // This implies stream.contextPreference is 'last' or 'all'
     let contextText = "";
     switch (previousContext.type) {
       case 'last':
@@ -132,25 +133,46 @@ export const fetchStreamUpdates = async (stream: Stream, previousContext?: Previ
 
     if (contextText) {
       contextPreamble = `
-PREVIOUS CONTEXT:
+PREVIOUS CONTEXT (STREAM UPDATES):
 The following is context from previous update(s) for this stream. Review it carefully to understand what information has already been provided.
---- BEGIN PREVIOUS CONTEXT ---
+--- BEGIN PREVIOUS STREAM UPDATE CONTEXT ---
 ${contextText}
---- END PREVIOUS CONTEXT ---
+--- END PREVIOUS STREAM UPDATE CONTEXT ---
 
 `;
       contextInstruction = `
-TASK MODIFICATION BASED ON PREVIOUS CONTEXT:
-Your primary goal now is to build upon the PREVIOUS CONTEXT provided above. Specifically:
-- Identify and present **NEW information, recent developments, deeper analysis, or different perspectives** that were NOT covered in the previous context.
+TASK MODIFICATION BASED ON PREVIOUS STREAM UPDATE CONTEXT:
+Your primary goal now is to build upon the PREVIOUS STREAM UPDATE CONTEXT provided above. Specifically:
+- Identify and present **NEW information, recent developments, deeper analysis, or different perspectives** that were NOT covered in the previous stream update context.
 - If you are expanding on a point from the previous context, explicitly state that you are doing so.
 - **Critically avoid repeating information** already present in the context unless it's absolutely necessary for comparison, to highlight a significant change, or to provide a direct counterpoint.
-- Your response must still adhere to the primary topic ("${stream.name}"), focus ("${stream.focus}"), and the detail level instruction ("${detailInstruction}").
 `;
     }
   }
 
+  let pinnedMessagesPreamble = "";
+  // Pinned messages are only included if stream.contextPreference is 'last' or 'all'
+  if ( (stream.contextPreference === 'last' || stream.contextPreference === 'all') && 
+       stream.pinnedChatMessages && stream.pinnedChatMessages.length > 0
+     ) {
+    const pinnedContextText = stream.pinnedChatMessages
+      .map(pm => `${pm.role === 'user' ? 'User' : 'Assistant'} (pinned from chat on ${new Date(pm.originalTimestamp).toLocaleString()}): ${pm.text}`)
+      .join("\n");
+    
+    pinnedMessagesPreamble = `
+USER-PINNED CHAT CONTEXT:
+The following are messages manually pinned by the user from a previous chat discussion related to this stream. These are considered highly relevant by the user and should be considered alongside any previous stream update context.
+--- BEGIN PINNED CHAT CONTEXT ---
+${pinnedContextText}
+--- END PINNED CHAT CONTEXT ---
+
+Based on this pinned chat context, ensure your response integrates or addresses these points as appropriate, in addition to any instructions related to previous stream updates.
+`;
+  }
+
+
   const prompt = `
+${pinnedMessagesPreamble} 
 ${contextPreamble}
 You are an AI assistant tasked with generating updates on specific topics, similar to an in-depth RSS feed item, a briefing document, or a research paper, depending on the requested detail level.
 The information should be current and relevant, drawing from recent news, discussions, and developments.
@@ -188,16 +210,15 @@ If reasoning is requested via instructions to use <think> tags, ensure these tag
     if (stream.topP !== undefined && stream.topP !== null && !isNaN(stream.topP)) apiCallConfig.topP = stream.topP;
     if (stream.seed !== undefined && stream.seed !== null && !isNaN(stream.seed)) apiCallConfig.seed = stream.seed;
 
-    // Conditionally add thinkingConfig only if the model supports it and reasoning is enabled
     if (selectedModelConfig?.supportsThinkingConfig) {
-      if (stream.enableReasoning === false) {
-        apiCallConfig.thinkingConfig = { thinkingBudget: 0 }; 
-      } else { 
+      if (stream.reasoningMode === 'off') {
+        apiCallConfig.thinkingConfig = { thinkingBudget: 0 };
+      } else if (stream.reasoningMode === 'request') {
         if (stream.autoThinkingBudget === true || stream.autoThinkingBudget === undefined) {
-          // No thinkingConfig, use model default budget
-        } else { 
+          // No explicit thinkingConfig needed, model uses its default budget for "request" mode.
+        } else {
           if (stream.thinkingTokenBudget !== undefined) {
-            apiCallConfig.thinkingConfig = { thinkingBudget: stream.thinkingTokenBudget }; 
+            apiCallConfig.thinkingConfig = { thinkingBudget: stream.thinkingTokenBudget };
           }
         }
       }
@@ -280,10 +301,11 @@ export const createChatSession = (initialContext: string): Chat | null => {
 
   try {
     const chat: Chat = localAi.chats.create({
-      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, // Chat uses default model for now
+      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, 
       history: history,
       config: {
-        systemInstruction: "You are an intelligent assistant. Your primary goal is to help the user explore and understand the provided context in more detail. Answer questions based on the context. If the context doesn't provide an answer, say so, but you can also use your general knowledge to provide related information if explicitly asked or if it enhances the explanation without contradicting the context."
+        systemInstruction: "You are an intelligent assistant. Your primary goal is to help the user explore and understand the provided context in more detail. Answer questions based on the context. If the context doesn't provide an answer, say so. Use Google Search grounding to provide current and relevant information for your answers.",
+        tools: [{ googleSearch: {} }] // Enable Google Search for chat
       }
     });
     return chat;
@@ -293,12 +315,33 @@ export const createChatSession = (initialContext: string): Chat | null => {
   }
 };
 
-export const sendMessageInChat = async (chat: Chat, message: string): Promise<string> => {
+interface SendMessageResult {
+  text: string;
+  groundingMetadata?: GroundingChunk[];
+}
+
+export const sendMessageInChat = async (chat: Chat, message: string): Promise<SendMessageResult> => {
   getAiClient(); 
 
   try {
     const response: GenerateContentResponse = await chat.sendMessage({ message });
-    return response.text;
+    const text = response.text;
+    let groundingMetadata: GroundingChunk[] | undefined = undefined;
+    const rawGroundingData = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+
+    if (Array.isArray(rawGroundingData)) {
+      groundingMetadata = rawGroundingData.map((chunk: GenAIGroundingChunk) => {
+        if (chunk.web) {
+          return { web: { uri: chunk.web.uri || '', title: chunk.web.title || 'Untitled Source' } };
+        }
+        if (chunk.retrievedContext) {
+          return { web: { uri: chunk.retrievedContext.uri || '', title: chunk.retrievedContext.title || 'Untitled Source' } };
+        }
+        return { web: { uri: '#', title: 'Unknown Source' } };
+      }).filter(chunk => chunk.web && chunk.web.uri && chunk.web.uri !== '#');
+    }
+
+    return { text, groundingMetadata };
   } catch (error) {
     console.error("Error sending message in chat to Gemini:", error);
     if (error instanceof Error) {

@@ -257,7 +257,7 @@ const StreamGridCard: React.FC<StreamGridCardProps> = ({
             <div className="flex items-center space-x-1.5">
                 <span className="bg-pink-700 text-pink-100 px-1.5 py-0.5 rounded-full text-xs flex items-center" title={`Using model: ${displayModelName}`}>
                     {displayModelName}
-                    {(stream.enableReasoning && currentModelConfig?.supportsThinkingConfig) ? <span role="img" aria-label="brain" title="Reasoning Enabled" className="ml-1 text-sm">🧠</span> : <span title="Reasoning Disabled/Not Supported" className="ml-1 text-sm opacity-60">🧠</span>}
+                    {(stream.reasoningMode === 'request' && currentModelConfig?.supportsThinkingConfig) ? <span role="img" aria-label="brain" title="Reasoning: Requested & Supported" className="ml-1 text-sm">🧠</span> : <span title={`Reasoning: ${stream.reasoningMode === 'request' ? 'Requested (Experimental)' : 'Off'}`} className="ml-1 text-sm opacity-60">🧠</span>}
                 </span>
                 {totalTokens > 0 && (
                 <div className="font-mono bg-gray-950 text-green-400 px-1.5 py-0.5 border border-gray-700 rounded text-xs flex items-center" title="Estimated total tokens">

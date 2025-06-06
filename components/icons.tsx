@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const PlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -272,6 +273,18 @@ export const MusicalNoteIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) 
 export const KeyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+  </svg>
+);
+
+export const PinIcon: React.FC<React.SVGProps<SVGSVGElement> & {isPinned?: boolean}> = ({isPinned, ...props}) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill={isPinned ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+    {isPinned ?
+      <path strokeLinecap="round" strokeLinejoin="round" stroke="#FFF" strokeWidth="2" d="M12 7.5v6" /> :
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v0M12 10.5a.75.75 0 110-1.5.75.75 0 010 1.5Z" />
+    }
+     {/* A simple inner circle or line to indicate active pin state if needed, or rely on fill */}
+    {isPinned &&  <circle cx="12" cy="10.5" r="1.5" fill="#FFF" stroke="#FFF" strokeWidth="0.5" />}
   </svg>
 );
 

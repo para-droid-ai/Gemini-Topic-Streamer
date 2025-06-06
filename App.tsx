@@ -6,7 +6,7 @@ import StreamView from './components/StreamView';
 import GridView from './components/GridView'; 
 import EditStreamModal from './components/EditStreamModal';
 import ApiKeyModal from './components/ApiKeyModal'; 
-import { Stream, StreamUpdate, StreamContextPreference, AppBackup, StreamDetailLevel, AvailableGeminiModelId } from './types';
+import { Stream, StreamUpdate, StreamContextPreference, AppBackup, StreamDetailLevel, AvailableGeminiModelId, ChatMessage, PinnedChatMessage, GroundingChunk, ReasoningMode } from './types';
 import { 
     fetchStreamUpdates, 
     PreviousContext, 
@@ -19,89 +19,35 @@ import {
     DEFAULT_TEMPERATURE, 
     DEFAULT_DETAIL_LEVEL, 
     DEFAULT_CONTEXT_PREFERENCE, 
-    DEFAULT_ENABLE_REASONING,
+    DEFAULT_REASONING_MODE,
     DEFAULT_THINKING_TOKEN_BUDGET,
     DEFAULT_AUTO_THINKING_BUDGET,
     USER_API_KEY_STORAGE_KEY,
-    DEFAULT_GEMINI_MODEL_ID // New import
+    DEFAULT_GEMINI_MODEL_ID 
 } from './constants'; 
 import { 
     ArrowDownTrayIcon, ArrowUpTrayIcon, ListBulletIcon, TableCellsIcon, DocumentDuplicateIcon, 
     ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon 
 } from './components/icons';
 import { convertToCSV, downloadFile } from './utils/exportUtils';
+import {
+  getAllStreams,
+  getAllUpdates,
+  saveStreams,
+  saveUpdate,
+  deleteStreamFromDB,
+  deleteUpdateFromDB,
+  clearAllDataFromDB
+} from './services/dbService';
 
-
-const STREAMS_STORAGE_KEY = 'geminiTopicStreams_v6'; // Incremented version for modelName
-const UPDATES_STORAGE_KEY = 'geminiTopicUpdates_v6'; // Incremented version
 
 type ViewMode = 'list' | 'grid';
 
 const App: React.FC = () => {
-  const [streams, setStreams] = useState<Stream[]>(() => {
-    const savedStreams = localStorage.getItem(STREAMS_STORAGE_KEY);
-    try {
-      const parsedStreams = savedStreams ? JSON.parse(savedStreams) : [];
-      return parsedStreams.map((s: any): Stream => ({
-        id: s.id || crypto.randomUUID(),
-        name: s.name || "Untitled Stream",
-        focus: s.focus || "General topics",
-        temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
-        detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
-        contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
-        modelName: s.modelName || DEFAULT_GEMINI_MODEL_ID, // Add modelName
-        enableReasoning: typeof s.enableReasoning === 'boolean' ? s.enableReasoning : DEFAULT_ENABLE_REASONING,
-        autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
-        thinkingTokenBudget: typeof s.thinkingTokenBudget === 'number' ? s.thinkingTokenBudget : DEFAULT_THINKING_TOKEN_BUDGET,
-        topK: typeof s.topK === 'number' ? s.topK : undefined,
-        topP: typeof s.topP === 'number' ? s.topP : undefined,
-        seed: typeof s.seed === 'number' ? s.seed : undefined,
-      }));
-    } catch (e) {
-      console.error("Failed to parse streams from localStorage", e);
-      return [];
-    }
-  });
+  const [streams, setStreams] = useState<Stream[]>([]);
   const [selectedStreamId, setSelectedStreamId] = useState<string | null>(null);
-  const [streamUpdates, setStreamUpdates] = useState<{ [key: string]: StreamUpdate[] }>(() => {
-    const savedUpdates = localStorage.getItem(UPDATES_STORAGE_KEY);
-     try {
-      const parsedUpdates = savedUpdates ? JSON.parse(savedUpdates) : {};
-      Object.keys(parsedUpdates).forEach(streamId => {
-        if (Array.isArray(parsedUpdates[streamId])) {
-          parsedUpdates[streamId] = parsedUpdates[streamId].map((upd: any): StreamUpdate => {
-            const mainContent = typeof upd.mainContent === 'string' ? upd.mainContent : (typeof upd.content === 'string' ? upd.content : "");
-            const reasoningContent = typeof upd.reasoningContent === 'string' ? upd.reasoningContent : undefined;
-            let mainContentTokens = typeof upd.mainContentTokens === 'number' ? upd.mainContentTokens : undefined;
-            let reasoningTokens = typeof upd.reasoningTokens === 'number' ? upd.reasoningTokens : undefined;
-
-            if (mainContentTokens === undefined && typeof upd.estimatedTokens === 'number') {
-              mainContentTokens = upd.estimatedTokens;
-              reasoningTokens = 0;
-            } else if (mainContentTokens === undefined) {
-              mainContentTokens = Math.ceil(mainContent.length / 4);
-              reasoningTokens = Math.ceil((reasoningContent || "").length / 4);
-            }
-            
-            return {
-              id: upd.id || crypto.randomUUID(),
-              streamId: upd.streamId || streamId,
-              mainContent: mainContent,
-              reasoningContent: reasoningContent,
-              groundingMetadata: Array.isArray(upd.groundingMetadata) ? upd.groundingMetadata : undefined,
-              timestamp: typeof upd.timestamp === 'string' ? upd.timestamp : new Date().toISOString(),
-              mainContentTokens: mainContentTokens,
-              reasoningTokens: reasoningTokens,
-            };
-          }).sort((a: StreamUpdate, b: StreamUpdate) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        }
-      });
-      return parsedUpdates;
-    } catch (e) {
-      console.error("Failed to parse updates from localStorage", e);
-      return {};
-    }
-  });
+  const [streamUpdates, setStreamUpdates] = useState<{ [key: string]: StreamUpdate[] }>({});
+  const [isDataLoaded, setIsDataLoaded] = useState(false); 
 
   const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({});
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +72,23 @@ const App: React.FC = () => {
   }, [loadingStates]);
 
   useEffect(() => {
+    const loadDataFromDB = async () => {
+      try {
+        const dbStreams = await getAllStreams();
+        const dbUpdates = await getAllUpdates();
+        setStreams(dbStreams);
+        setStreamUpdates(dbUpdates);
+      } catch (error) {
+        console.error("Failed to load data from IndexedDB", error);
+        setError("Could not load application data from local database. Please check browser permissions.");
+      } finally {
+        setIsDataLoaded(true);
+      }
+    };
+    loadDataFromDB();
+  }, []);
+
+  useEffect(() => {
     const storedUserApiKey = localStorage.getItem(USER_API_KEY_STORAGE_KEY);
     if (storedUserApiKey) {
       updateUserApiKey(storedUserApiKey); 
@@ -135,15 +98,6 @@ const App: React.FC = () => {
     setApiKeyAvailable(isApiKeyEffectivelySet());
     setApiKeySource(getActiveKeySource());
   }, []);
-
-
-  useEffect(() => {
-    localStorage.setItem(STREAMS_STORAGE_KEY, JSON.stringify(streams));
-  }, [streams]);
-
-  useEffect(() => {
-    localStorage.setItem(UPDATES_STORAGE_KEY, JSON.stringify(streamUpdates));
-  }, [streamUpdates]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -221,6 +175,7 @@ const App: React.FC = () => {
         mainContentTokens,
         reasoningTokens,
       };
+      await saveUpdate(newUpdate); 
       setStreamUpdates(prevUpdates => {
         const existingUpdates = prevUpdates[stream.id] || [];
         return {
@@ -228,6 +183,37 @@ const App: React.FC = () => {
           [stream.id]: [newUpdate, ...existingUpdates]
         };
       });
+
+      setStreams(prevStreams => {
+        const streamsToSort = [...prevStreams];
+        const updatedStreamIndex = streamsToSort.findIndex(s => s.id === stream.id);
+
+        if (updatedStreamIndex !== -1) {
+          const updatedStreamInstance = { ...streamsToSort[updatedStreamIndex], lastUpdated: new Date().toISOString() };
+          streamsToSort.splice(updatedStreamIndex, 1); // Remove from old position
+          streamsToSort.unshift(updatedStreamInstance); // Add to the beginning
+
+          // Further sort the rest of the streams (excluding the one just moved to top)
+          // This part is simplified: the main updated stream is already at the top.
+          // The `saveStreams` will save this new order directly.
+          // If more complex sorting beyond "updated to top" is needed for the rest, it would go here.
+          // For now, placing the updated stream at the top is the primary goal.
+          // To ensure consistent sorting based on lastUpdated for all streams:
+          streamsToSort.sort((a, b) => {
+            if (a.id === updatedStreamInstance.id) return -1;
+            if (b.id === updatedStreamInstance.id) return 1;
+            
+            const dateA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+            const dateB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+            return dateB - dateA; // Sort by newest first
+          });
+          
+          saveStreams(streamsToSort);
+          return streamsToSort;
+        }
+        return prevStreams;
+      });
+
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -250,7 +236,7 @@ const App: React.FC = () => {
     setIsAddModalOpen(false);
   };
 
-  const handleAddStream = (newStreamData: Omit<Stream, 'id'>) => { 
+  const handleAddStream = async (newStreamData: Omit<Stream, 'id' | 'pinnedChatMessages' | 'lastUpdated'>) => { 
     const newStream: Stream = {
       id: crypto.randomUUID(),
       name: newStreamData.name,
@@ -259,14 +245,30 @@ const App: React.FC = () => {
       detailLevel: newStreamData.detailLevel,
       contextPreference: newStreamData.contextPreference,
       modelName: newStreamData.modelName || DEFAULT_GEMINI_MODEL_ID,
-      enableReasoning: newStreamData.enableReasoning,
+      reasoningMode: newStreamData.reasoningMode,
       autoThinkingBudget: newStreamData.autoThinkingBudget,
       thinkingTokenBudget: newStreamData.thinkingTokenBudget,
       topK: newStreamData.topK,
       topP: newStreamData.topP,
       seed: newStreamData.seed,
+      pinnedChatMessages: [],
+      lastUpdated: new Date().toISOString(), // New stream is the "most recently updated"
     };
-    setStreams(prevStreams => [newStream, ...prevStreams]); 
+    
+    // Add new stream to the beginning and then sort all streams
+    // The sort ensures it respects other lastUpdated timestamps if any exist,
+    // but a brand new stream with current timestamp will naturally be at/near the top.
+    setStreams(prevStreams => {
+        const streamsWithNew = [newStream, ...prevStreams];
+        streamsWithNew.sort((a,b) => {
+            const dateA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+            const dateB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+            return dateB - dateA;
+        });
+        saveStreams(streamsWithNew);
+        return streamsWithNew;
+    });
+
     setSelectedStreamId(newStream.id); 
     setViewMode('list'); 
     setError(null);
@@ -293,9 +295,17 @@ const App: React.FC = () => {
     setStreamToEdit(null);
   };
 
-  const handleUpdateStream = (updatedStream: Stream) => {
-    const oldStream = streams.find(s => s.id === updatedStream.id);
-    setStreams(prevStreams => prevStreams.map(s => s.id === updatedStream.id ? updatedStream : s));
+  const handleUpdateStream = async (updatedStreamFull: Stream) => {
+    const oldStream = streams.find(s => s.id === updatedStreamFull.id);
+    
+    // Ensure lastUpdated is preserved or updated if relevant changes occurred
+    const updatedStream = { ...updatedStreamFull, lastUpdated: oldStream?.lastUpdated || new Date().toISOString() };
+
+
+    const newStreams = streams.map(s => s.id === updatedStream.id ? updatedStream : s);
+    // No sort here, as editing doesn't automatically mean it's "fresher" than others unless content affecting parameters change
+    setStreams(newStreams); 
+    await saveStreams(newStreams); 
     
     let shouldReFetch = false;
     if (oldStream) {
@@ -304,13 +314,14 @@ const App: React.FC = () => {
             oldStream.detailLevel !== updatedStream.detailLevel ||
             oldStream.temperature !== updatedStream.temperature ||
             oldStream.contextPreference !== updatedStream.contextPreference ||
-            oldStream.modelName !== updatedStream.modelName || // Check model name change
-            oldStream.enableReasoning !== updatedStream.enableReasoning ||
+            oldStream.modelName !== updatedStream.modelName || 
+            oldStream.reasoningMode !== updatedStream.reasoningMode ||
             oldStream.autoThinkingBudget !== updatedStream.autoThinkingBudget ||
             oldStream.thinkingTokenBudget !== updatedStream.thinkingTokenBudget ||
             oldStream.topK !== updatedStream.topK ||
             oldStream.topP !== updatedStream.topP ||
-            oldStream.seed !== updatedStream.seed
+            oldStream.seed !== updatedStream.seed ||
+            JSON.stringify(oldStream.pinnedChatMessages || []) !== JSON.stringify(updatedStream.pinnedChatMessages || [])
         ) {
             shouldReFetch = true;
         }
@@ -318,7 +329,7 @@ const App: React.FC = () => {
 
     if (isApiKeyEffectivelySet() && shouldReFetch) {
         if (!loadingStatesRef.current[updatedStream.id]) {
-            fetchUpdates(updatedStream);
+            fetchUpdates(updatedStream); // This will handle re-sorting if an update is fetched
         }
     } else if (!isApiKeyEffectivelySet() && shouldReFetch) {
          setError("API Key not configured. Cannot fetch updates for the modified stream.");
@@ -326,9 +337,15 @@ const App: React.FC = () => {
     handleCloseEditModal();
   };
 
-  const handleDeleteStream = (streamId: string) => {
+  const handleDeleteStream = async (streamId: string) => {
+    await deleteStreamFromDB(streamId);
+
     const newStreamsList = streams.filter(s => s.id !== streamId);
     setStreams(newStreamsList);
+    // `saveStreams` is implicitly called if newStreamsList is different,
+    // or it will be called by other operations that modify streams.
+    // If newStreamsList is empty, no save is needed here.
+    // If not empty, the order is preserved from the filtered list.
 
     setStreamUpdates(prevUpdates => {
       const newUpdates = { ...prevUpdates };
@@ -349,25 +366,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteStreamUpdate = (streamId: string, updateId: string) => {
-    console.log(`[App.tsx] handleDeleteStreamUpdate called for streamId: ${streamId}, updateId: ${updateId}`);
+  const handleDeleteStreamUpdate = async (streamId: string, updateId: string) => {
+    await deleteUpdateFromDB(updateId);
+    
     setStreamUpdates(prevUpdates => {
       const specificStreamUpdates = prevUpdates[streamId];
 
       if (!specificStreamUpdates) {
-        console.warn(`[App.tsx] Stream with ID "${streamId}" not found in streamUpdates. Cannot delete update "${updateId}".`);
         return prevUpdates; 
       }
-
-      const initialLength = specificStreamUpdates.length;
       const updatedSpecificStreamUpdates = specificStreamUpdates.filter(update => update.id !== updateId);
-
-      if (updatedSpecificStreamUpdates.length === initialLength) {
-        console.warn(`[App.tsx] Update with ID "${updateId}" not found in stream "${streamId}". No update was deleted.`);
-        return prevUpdates; 
-      }
       
-      console.log(`[App.tsx] Successfully filtered update "${updateId}" from stream "${streamId}". Old length: ${initialLength}, New length: ${updatedSpecificStreamUpdates.length}`);
       return {
         ...prevUpdates,
         [streamId]: updatedSpecificStreamUpdates,
@@ -375,12 +384,16 @@ const App: React.FC = () => {
     });
   };
 
-  const handleUpdateStreamContextPreference = (streamId: string, preference: StreamContextPreference) => {
-    setStreams(prevStreams => prevStreams.map(s => s.id === streamId ? { ...s, contextPreference: preference } : s));
+  const handleUpdateStreamContextPreference = async (streamId: string, preference: StreamContextPreference) => {
+    const newStreams = streams.map(s => s.id === streamId ? { ...s, contextPreference: preference } : s);
+    setStreams(newStreams);
+    await saveStreams(newStreams); // Order remains, only preference changes
   };
   
-  const handleUpdateStreamDetailLevel = (streamId: string, detailLevel: StreamDetailLevel) => {
-    setStreams(prevStreams => prevStreams.map(s => s.id === streamId ? { ...s, detailLevel: detailLevel } : s));
+  const handleUpdateStreamDetailLevel = async (streamId: string, detailLevel: StreamDetailLevel) => {
+    const newStreams = streams.map(s => s.id === streamId ? { ...s, detailLevel: detailLevel } : s);
+    setStreams(newStreams);
+    await saveStreams(newStreams); // Order remains, only detail level changes
   };
 
 
@@ -406,43 +419,52 @@ const App: React.FC = () => {
     }
   }, [fetchUpdates]); 
 
-  const handleReorderStreams = (draggedId: string, targetId: string, insertBefore: boolean) => {
-    setStreams(prevStreams => {
-      const newStreams = [...prevStreams];
-      const draggedItemIndex = newStreams.findIndex(s => s.id === draggedId);
-      
-      if (draggedItemIndex === -1) return prevStreams;
-      
-      const [draggedItem] = newStreams.splice(draggedItemIndex, 1);
-      const targetItemIndex = newStreams.findIndex(s => s.id === targetId);
+  const handleReorderStreams = async (draggedId: string, targetId: string, insertBefore: boolean) => {
+    let reorderedStreamsList = [...streams];
+    const draggedItemIndex = reorderedStreamsList.findIndex(s => s.id === draggedId);
+    
+    if (draggedItemIndex === -1) return;
+    
+    const [draggedItem] = reorderedStreamsList.splice(draggedItemIndex, 1);
+    const targetItemIndex = reorderedStreamsList.findIndex(s => s.id === targetId);
 
-      if (targetItemIndex === -1) {
-        newStreams.push(draggedItem);
-        return newStreams;
-      }
-
+    if (targetItemIndex === -1) {
+      reorderedStreamsList.push(draggedItem);
+    } else {
       if (insertBefore) {
-        newStreams.splice(targetItemIndex, 0, draggedItem);
+        reorderedStreamsList.splice(targetItemIndex, 0, draggedItem);
       } else {
-        newStreams.splice(targetItemIndex + 1, 0, draggedItem);
+        reorderedStreamsList.splice(targetItemIndex + 1, 0, draggedItem);
       }
-      return newStreams;
+    }
+    
+    // Update lastUpdated timestamps to reflect manual order
+    const now = new Date();
+    const streamsWithUpdatedOrder = reorderedStreamsList.map((stream, index) => {
+      // Subtract seconds to ensure descending order for sort stability if needed,
+      // though the array order itself is now the source of truth for `saveStreams`.
+      const newTimestamp = new Date(now.getTime() - index * 1000).toISOString();
+      return { ...stream, lastUpdated: newTimestamp };
     });
+
+    setStreams(streamsWithUpdatedOrder);
+    await saveStreams(streamsWithUpdatedOrder); // This saves the new manual order
   };
 
 
    useEffect(() => {
-    if (viewMode === 'list' && !selectedStreamId && streams.length > 0) {
+    if (isDataLoaded && viewMode === 'list' && !selectedStreamId && streams.length > 0) {
+        // Streams are now loaded sorted by `order` from DB, which reflects `lastUpdated`
         const firstStreamId = streams[0].id;
         setSelectedStreamId(firstStreamId); 
-    } else if (streams.length === 0 && selectedStreamId) {
+    } else if (isDataLoaded && streams.length === 0 && selectedStreamId) {
         setSelectedStreamId(null); 
     }
-  }, [streams, selectedStreamId, viewMode]);
+  }, [streams, selectedStreamId, viewMode, isDataLoaded]);
 
 
   useEffect(() => {
-    if (viewMode === 'list' && selectedStreamId) {
+    if (isDataLoaded && viewMode === 'list' && selectedStreamId) {
         const stream = streams.find(s => s.id === selectedStreamId);
         if (isApiKeyEffectivelySet() && stream && (!streamUpdates[selectedStreamId] || streamUpdates[selectedStreamId].length === 0)) {
             if (!loadingStatesRef.current[selectedStreamId]) { 
@@ -452,14 +474,16 @@ const App: React.FC = () => {
              setError("API Key not configured. Cannot display or fetch updates for selected stream.");
         }
     }
-  }, [selectedStreamId, streams, streamUpdates, fetchUpdates, viewMode]); 
+  }, [selectedStreamId, streams, streamUpdates, fetchUpdates, viewMode, isDataLoaded]); 
 
 
-  const handleExportAllDataJSON = () => {
+  const handleExportAllDataJSON = async () => {
     setShowExportAllMenu(false);
+    const currentStreams = await getAllStreams();
+    const currentUpdates = await getAllUpdates();
     const backupData: AppBackup = {
-      streams: streams,
-      streamUpdates: streamUpdates,
+      streams: currentStreams,
+      streamUpdates: currentUpdates,
     };
     const jsonString = JSON.stringify(backupData, null, 2);
     downloadFile(jsonString, `${APP_NAME.toLowerCase().replace(/\s+/g, '_')}_backup_${new Date().toISOString().split('T')[0]}.json`, 'application/json');
@@ -468,15 +492,18 @@ const App: React.FC = () => {
   
   const handleExportAllDataCSV = async () => {
     setShowExportAllMenu(false);
-    if (!streams.length && !Object.keys(streamUpdates).some(key => streamUpdates[key].length > 0)) {
+    const currentStreams = await getAllStreams();
+    const currentUpdatesMap = await getAllUpdates();
+
+    if (!currentStreams.length && !Object.keys(currentUpdatesMap).some(key => currentUpdatesMap[key].length > 0)) {
       alert("No data to export.");
       return;
     }
 
     const zip = new JSZip();
 
-    const streamHeaders = ['stream_id', 'name', 'focus', 'temperature', 'detail_level', 'context_preference', 'model_name', 'enable_reasoning', 'auto_thinking_budget', 'thinking_token_budget', 'top_k', 'top_p', 'seed'];
-    const streamsData = streams.map(s => ({
+    const streamHeaders = ['stream_id', 'name', 'focus', 'temperature', 'detail_level', 'context_preference', 'model_name', 'reasoning_mode', 'auto_thinking_budget', 'thinking_token_budget', 'top_k', 'top_p', 'seed', 'last_updated', 'pinned_chat_messages_json'];
+    const streamsData = currentStreams.map(s => ({
         stream_id: s.id,
         name: s.name,
         focus: s.focus,
@@ -484,19 +511,21 @@ const App: React.FC = () => {
         detail_level: s.detailLevel,
         context_preference: s.contextPreference,
         model_name: s.modelName || DEFAULT_GEMINI_MODEL_ID,
-        enable_reasoning: s.enableReasoning,
+        reasoning_mode: s.reasoningMode,
         auto_thinking_budget: s.autoThinkingBudget === undefined ? '' : s.autoThinkingBudget,
         thinking_token_budget: s.thinkingTokenBudget === undefined ? '' : s.thinkingTokenBudget,
         top_k: s.topK === undefined ? '' : s.topK,
         top_p: s.topP === undefined ? '' : s.topP,
         seed: s.seed === undefined ? '' : s.seed,
+        last_updated: s.lastUpdated || '',
+        pinned_chat_messages_json: JSON.stringify(s.pinnedChatMessages || [])
     }));
     const streamsCSV = convertToCSV(streamsData, streamHeaders);
     zip.file("streams.csv", streamsCSV);
 
     const updateHeaders = ['update_id', 'stream_id', 'timestamp', 'main_content', 'reasoning_content', 'main_content_tokens', 'reasoning_tokens', 'grounding_source_urls'];
     let allUpdatesData: any[] = [];
-    Object.values(streamUpdates).forEach(updatesArray => {
+    Object.values(currentUpdatesMap).forEach(updatesArray => {
         updatesArray.forEach(update => {
             const groundingUrls = (update.groundingMetadata || [])
                 .map(chunk => chunk.web?.uri || chunk.retrievedContext?.uri)
@@ -534,81 +563,13 @@ const App: React.FC = () => {
     }
   };
 
-
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    const performImportActions = (parsedData: AppBackup) => {
-      const importedStreams = parsedData.streams.map((s: any): Stream => ({
-        id: s.id || crypto.randomUUID(),
-        name: s.name || "Untitled Stream",
-        focus: s.focus || "General topics",
-        temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
-        detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
-        contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
-        modelName: s.modelName || DEFAULT_GEMINI_MODEL_ID, // Add modelName
-        enableReasoning: typeof s.enableReasoning === 'boolean' ? s.enableReasoning : DEFAULT_ENABLE_REASONING,
-        autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
-        thinkingTokenBudget: typeof s.thinkingTokenBudget === 'number' ? s.thinkingTokenBudget : DEFAULT_THINKING_TOKEN_BUDGET,
-        topK: typeof s.topK === 'number' ? s.topK : undefined,
-        topP: typeof s.topP === 'number' ? s.topP : undefined,
-        seed: typeof s.seed === 'number' ? s.seed : undefined,
-      }));
-      
-      let validatedStreamUpdates: { [key: string]: StreamUpdate[] } = {};
-      if (parsedData.streamUpdates && typeof parsedData.streamUpdates === 'object' && parsedData.streamUpdates !== null) {
-        for (const streamId in parsedData.streamUpdates) {
-          if (Object.prototype.hasOwnProperty.call(parsedData.streamUpdates, streamId)) {
-            const updatesArray = parsedData.streamUpdates[streamId];
-            if (Array.isArray(updatesArray)) {
-              validatedStreamUpdates[streamId] = updatesArray
-                .map((upd: any): StreamUpdate | null => {
-                  const mainContent = typeof upd.mainContent === 'string' ? upd.mainContent : (typeof upd.content === 'string' ? upd.content : "");
-                  let mainContentTokens = typeof upd.mainContentTokens === 'number' ? upd.mainContentTokens : undefined;
-                  let reasoningTokens = typeof upd.reasoningTokens === 'number' ? upd.reasoningTokens : undefined;
-                  const reasoningContent = typeof upd.reasoningContent === 'string' ? upd.reasoningContent : undefined;
-
-                  if (mainContentTokens === undefined && typeof upd.estimatedTokens === 'number') {
-                    mainContentTokens = upd.estimatedTokens;
-                    reasoningTokens = 0; 
-                  } else if (mainContentTokens === undefined) { 
-                    mainContentTokens = Math.ceil(mainContent.length / 4);
-                    reasoningTokens = Math.ceil((reasoningContent || "").length / 4);
-                  }
-
-                  if (upd && typeof upd.id === 'string' && typeof upd.timestamp === 'string' && (typeof upd.streamId === 'string' || !upd.streamId) ) {
-                    return {
-                      id: upd.id,
-                      streamId: upd.streamId || streamId, 
-                      mainContent: mainContent,
-                      reasoningContent: reasoningContent,
-                      groundingMetadata: Array.isArray(upd.groundingMetadata) ? upd.groundingMetadata : undefined,
-                      timestamp: upd.timestamp,
-                      mainContentTokens: mainContentTokens,
-                      reasoningTokens: reasoningTokens,
-                    };
-                  }
-                  console.warn("Skipping invalid update during import:", upd);
-                  return null; 
-                })
-                .filter((upd): upd is StreamUpdate => upd !== null) 
-                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            }
-          }
-        }
-      }
-      setStreams(importedStreams);
-      setStreamUpdates(validatedStreamUpdates);
-      setLoadingStates({});
-      setSelectedStreamId(importedStreams.length > 0 ? importedStreams[0].id : null);
-      setViewMode('list'); 
-      alert('Data imported successfully!');
-    };
-
-    reader.onload = (e) => {
-      try {
+    reader.onload = async (e) => {
+      try { 
         const result = e.target?.result;
         if (typeof result !== 'string') throw new Error('File content is not a string.');
         const parsedData = JSON.parse(result) as AppBackup;
@@ -617,13 +578,114 @@ const App: React.FC = () => {
           throw new Error('Invalid backup file format.');
         }
         
-        const userConfirmed = window.confirm('Are you sure you want to import this data? This will overwrite all current streams and updates.');
-        console.log(`App.tsx: Import confirmation for file "${file.name}" was: ${userConfirmed}.`);
-        
-        console.warn('App.tsx handleImportData: Proceeding with import action to ensure functionality testing in sandboxed environment. If you explicitly cancelled, this is part of the test bypass.');
-        performImportActions(parsedData);
+        const isSandboxed = window.self !== window.top;
+        let userConfirmed = false;
 
-      } catch (err) {
+        if (isSandboxed) {
+          console.log("Sandbox environment detected. Bypassing import confirmation dialog.");
+          userConfirmed = true; 
+        } else {
+          userConfirmed = window.confirm('Are you sure you want to import this data? This will overwrite all current streams and updates.');
+        }
+
+        if (userConfirmed) {
+          try { 
+            await clearAllDataFromDB();
+            
+            const importedStreams = parsedData.streams.map((s: any): Stream => ({
+                id: s.id || crypto.randomUUID(),
+                name: s.name || "Untitled Stream",
+                focus: s.focus || "General topics",
+                temperature: typeof s.temperature === 'number' ? s.temperature : DEFAULT_TEMPERATURE,
+                detailLevel: s.detailLevel || DEFAULT_DETAIL_LEVEL,
+                contextPreference: s.contextPreference || DEFAULT_CONTEXT_PREFERENCE,
+                modelName: s.modelName || DEFAULT_GEMINI_MODEL_ID, 
+                reasoningMode: s.reasoningMode || (typeof s.enableReasoning === 'boolean' ? (s.enableReasoning ? 'request' : 'off') : DEFAULT_REASONING_MODE),
+                autoThinkingBudget: typeof s.autoThinkingBudget === 'boolean' ? s.autoThinkingBudget : DEFAULT_AUTO_THINKING_BUDGET,
+                thinkingTokenBudget: typeof s.thinkingTokenBudget === 'number' ? s.thinkingTokenBudget : DEFAULT_THINKING_TOKEN_BUDGET,
+                topK: typeof s.topK === 'number' ? s.topK : undefined,
+                topP: typeof s.topP === 'number' ? s.topP : undefined,
+                seed: typeof s.seed === 'number' ? s.seed : undefined,
+                lastUpdated: s.lastUpdated || new Date(0).toISOString(), 
+                pinnedChatMessages: Array.isArray(s.pinnedChatMessages) ? s.pinnedChatMessages.map((pm: any): PinnedChatMessage => ({
+                    id: pm.id || crypto.randomUUID(),
+                    messageId: pm.messageId || '',
+                    role: pm.role || 'user',
+                    text: pm.text || '',
+                    originalTimestamp: pm.originalTimestamp || new Date().toISOString(),
+                    pinnedTimestamp: pm.pinnedTimestamp || new Date().toISOString(),
+                })) : [],
+            })).sort((a,b) => { 
+                const dateA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+                const dateB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+                return dateB - dateA;
+            });
+            
+            let validatedStreamUpdates: { [key: string]: StreamUpdate[] } = {};
+            const allImportedUpdateObjects: StreamUpdate[] = [];
+
+            if (parsedData.streamUpdates && typeof parsedData.streamUpdates === 'object' && parsedData.streamUpdates !== null) {
+                for (const streamId in parsedData.streamUpdates) {
+                    if (Object.prototype.hasOwnProperty.call(parsedData.streamUpdates, streamId)) {
+                        const updatesArray = parsedData.streamUpdates[streamId];
+                        if (Array.isArray(updatesArray)) {
+                            const streamSpecificUpdates = updatesArray
+                                .map((upd: any): StreamUpdate | null => {
+                                    const mainContent = typeof upd.mainContent === 'string' ? upd.mainContent : (typeof upd.content === 'string' ? upd.content : "");
+                                    let mainContentTokens = typeof upd.mainContentTokens === 'number' ? upd.mainContentTokens : undefined;
+                                    let reasoningTokens = typeof upd.reasoningTokens === 'number' ? upd.reasoningTokens : undefined;
+                                    const reasoningContent = typeof upd.reasoningContent === 'string' ? upd.reasoningContent : undefined;
+
+                                    if (mainContentTokens === undefined && typeof upd.estimatedTokens === 'number') {
+                                        mainContentTokens = upd.estimatedTokens;
+                                        reasoningTokens = 0; 
+                                    } else if (mainContentTokens === undefined) { 
+                                        mainContentTokens = Math.ceil(mainContent.length / 4);
+                                        reasoningTokens = Math.ceil((reasoningContent || "").length / 4);
+                                    }
+
+                                    if (upd && typeof upd.id === 'string' && typeof upd.timestamp === 'string' && (typeof upd.streamId === 'string' || !upd.streamId) ) {
+                                        const validUpdate: StreamUpdate = {
+                                            id: upd.id,
+                                            streamId: upd.streamId || streamId, 
+                                            mainContent: mainContent,
+                                            reasoningContent: reasoningContent,
+                                            groundingMetadata: Array.isArray(upd.groundingMetadata) ? upd.groundingMetadata : undefined,
+                                            timestamp: upd.timestamp,
+                                            mainContentTokens: mainContentTokens,
+                                            reasoningTokens: reasoningTokens,
+                                        };
+                                        allImportedUpdateObjects.push(validUpdate);
+                                        return validUpdate;
+                                    }
+                                    console.warn("Skipping invalid update during import:", upd);
+                                    return null; 
+                                })
+                                .filter((upd): upd is StreamUpdate => upd !== null) 
+                                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                            validatedStreamUpdates[streamId] = streamSpecificUpdates;
+                        }
+                    }
+                }
+            }
+
+            await saveStreams(importedStreams);
+            await Promise.all(allImportedUpdateObjects.map(update => saveUpdate(update)));
+
+            setStreams(importedStreams);
+            setStreamUpdates(validatedStreamUpdates);
+            setLoadingStates({});
+            setSelectedStreamId(importedStreams.length > 0 ? importedStreams[0].id : null);
+            setViewMode('list'); 
+            alert('Data imported successfully!');
+          } catch (dbErr) {
+            const errorMessage = dbErr instanceof Error ? dbErr.message : 'An unknown error occurred while processing imported data.';
+            alert(`Failed to process imported data: ${errorMessage}`);
+          }
+        } else {
+            console.log("User cancelled the import operation.");
+        }
+      } catch (err) { 
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
         alert(`Failed to import data: ${errorMessage}`);
       } finally {
@@ -638,9 +700,11 @@ const App: React.FC = () => {
   const currentUpdatesForStream = selectedStreamId ? (streamUpdates[selectedStreamId] || []) : [];
   const isLoadingSelectedStream = selectedStreamId ? (loadingStates[selectedStreamId] || false) : false;
 
-  const handleExportStreamData = (stream: Stream, format: 'txt' | 'md' | 'csv') => {
+  const handleExportStreamData = async (stream: Stream, format: 'txt' | 'md' | 'csv') => {
     if (!stream) return;
-    const updates = streamUpdates[stream.id] || [];
+    const allDbUpdates = await getAllUpdates();
+    const updates = allDbUpdates[stream.id] || [];
+
     if (updates.length === 0) {
         alert(`No updates to export for stream "${stream.name}".`);
         return;
@@ -700,6 +764,46 @@ const App: React.FC = () => {
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);
   };
+
+  const handlePinChatMessage = async (streamId: string, chatMessage: ChatMessage) => {
+    const newStreams = streams.map(s => {
+      if (s.id === streamId) {
+        const newPinnedMessage: PinnedChatMessage = {
+          id: crypto.randomUUID(),
+          messageId: chatMessage.id,
+          role: chatMessage.role,
+          text: chatMessage.text,
+          originalTimestamp: chatMessage.timestamp,
+          pinnedTimestamp: new Date().toISOString(),
+        };
+        const updatedPinnedMessages = [...(s.pinnedChatMessages || []), newPinnedMessage];
+        return { ...s, pinnedChatMessages: updatedPinnedMessages };
+      }
+      return s;
+    });
+    setStreams(newStreams);
+    await saveStreams(newStreams);
+  };
+
+  const handleUnpinChatMessage = async (streamId: string, pinnedChatMessageId: string) => {
+    const newStreams = streams.map(s => {
+      if (s.id === streamId) {
+        const updatedPinnedMessages = (s.pinnedChatMessages || []).filter(pm => pm.id !== pinnedChatMessageId);
+        return { ...s, pinnedChatMessages: updatedPinnedMessages };
+      }
+      return s;
+    });
+    setStreams(newStreams);
+    await saveStreams(newStreams);
+  };
+
+  if (!isDataLoaded) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-gray-900 text-xl font-semibold text-white">
+        Loading Application...
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen antialiased">
@@ -827,6 +931,8 @@ const App: React.FC = () => {
               onUpdateDetailLevel={handleUpdateStreamDetailLevel}
               onDeleteStreamUpdate={handleDeleteStreamUpdate} 
               isSidebarCollapsed={isSidebarCollapsed}
+              onPinChatMessage={handlePinChatMessage}
+              onUnpinChatMessage={handleUnpinChatMessage}
             />
           )}
         </main>

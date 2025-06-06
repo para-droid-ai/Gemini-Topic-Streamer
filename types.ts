@@ -1,6 +1,8 @@
 
 import { DEFAULT_GEMINI_MODEL_ID, AVAILABLE_MODELS } from "./constants";
 
+export type ReasoningMode = 'off' | 'request';
+
 export interface GroundingChunkWeb {
   uri: string;
   title: string;
@@ -20,6 +22,14 @@ export type StreamDetailLevel = 'brief' | 'comprehensive' | 'research';
 export type StreamContextPreference = 'none' | 'last' | 'all';
 export type AvailableGeminiModelId = typeof AVAILABLE_MODELS[number]['id'];
 
+export interface PinnedChatMessage {
+  id: string; // Unique ID for the pinned message entry
+  messageId: string; // Original ID of the chat message
+  role: 'user' | 'model';
+  text: string;
+  originalTimestamp: string;
+  pinnedTimestamp: string;
+}
 
 export interface Stream {
   id: string;
@@ -28,13 +38,15 @@ export interface Stream {
   temperature: number; // UI allows 0.0 to 2.0, API for text model expects 0.0-1.0
   detailLevel: StreamDetailLevel;
   contextPreference: StreamContextPreference;
-  enableReasoning: boolean; 
+  reasoningMode: ReasoningMode; 
   autoThinkingBudget?: boolean; 
   thinkingTokenBudget?: number; 
   topK?: number; 
   topP?: number; 
   seed?: number; 
   modelName?: AvailableGeminiModelId; // Added: To store the selected Gemini model for this stream
+  pinnedChatMessages?: PinnedChatMessage[]; // Added for pinned chat messages
+  lastUpdated?: string; // Optional ISO date string for when the stream was last updated or reordered
 }
 
 export interface StreamUpdate {
@@ -53,6 +65,7 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  groundingMetadata?: GroundingChunk[]; // Added for chat grounding
 }
 
 export interface AppBackup {

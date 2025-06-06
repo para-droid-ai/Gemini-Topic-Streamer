@@ -1,10 +1,11 @@
 
-import { StreamContextPreference, StreamDetailLevel } from "./types"; // StreamFrequency removed
+import { StreamContextPreference, StreamDetailLevel, ReasoningMode } from "./types"; // StreamFrequency removed, Added ReasoningMode
 
 export const AVAILABLE_MODELS = [
   { id: "gemini-2.5-flash-preview-04-17", name: "Gemini 2.5 Flash (04-17)", supportsThinkingConfig: true, default: true },
   { id: "gemini-2.5-flash-preview-05-20", name: "Gemini 2.5 Flash (05-20)", supportsThinkingConfig: false, default: false },
   { id: "gemini-2.5-pro-preview-05-06", name: "Gemini 2.5 Pro (05-06)", supportsThinkingConfig: false, default: false },
+  { id: "gemini-2.5-pro-preview-06-05", name: "Gemini 2.5 Pro (06-05)", supportsThinkingConfig: false, default: false },
 ] as const;
 
 export type AvailableGeminiModelId = typeof AVAILABLE_MODELS[number]['id'];
@@ -30,11 +31,11 @@ export const DEFAULT_TEMPERATURE = 0.7;
 export const DEFAULT_DETAIL_LEVEL: StreamDetailLevel = 'comprehensive';
 export const DEFAULT_CONTEXT_PREFERENCE: StreamContextPreference = 'none';
 
-export const DEFAULT_ENABLE_REASONING = true;
+export const DEFAULT_REASONING_MODE: ReasoningMode = 'off';
 export const DEFAULT_AUTO_THINKING_BUDGET = true; 
 export const DEFAULT_THINKING_TOKEN_BUDGET = 0; 
 
 
 // Audio constants
 export const TTS_DEFAULT_VOICE = "Kore"; 
-export const TTS_SAMPLE_RATE = 24000; 
+export const TTS_SAMPLE_RATE = 24000;
