@@ -1,8 +1,7 @@
-
 // components/StudioView.tsx
 import React from 'react';
 import { Podcast, Stream } from '../types'; 
-import { PlusIcon, TrashIcon, PlayIcon, LoadingSpinner, PauseIcon, StopCircleIcon, ArrowDownTrayIcon as ExportAudioIcon, DocumentTextIcon as TranscriptIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon } from './icons'; // Added PhotoIcon
+import { PlusIcon, TrashIcon, PlayIcon, LoadingSpinner, PauseIcon, StopCircleIcon, ArrowDownTrayIcon as ExportAudioIcon, DocumentTextIcon as TranscriptIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon, ArrowsPointingOutIcon } from './icons'; // Added PhotoIcon and ArrowsPointingOutIcon
 import { formatTimeAgo } from './StreamUpdateCard'; 
 import MarkdownRenderer from './MarkdownRenderer'; 
 import { TTS_DEFAULT_VOICE, AVAILABLE_TTS_VOICES } from '../constants';
@@ -27,6 +26,7 @@ interface StudioViewProps {
   onExportPodcastAudio: (podcast: Podcast) => void;
   expandedTranscriptPodcastId: string | null;
   onToggleTranscript: (podcastId: string) => void;
+  onOpenFullTranscriptView: (podcastId: string) => void; // Added prop
 }
 
 const StudioView: React.FC<StudioViewProps> = ({ 
@@ -43,6 +43,7 @@ const StudioView: React.FC<StudioViewProps> = ({
     onExportPodcastAudio,
     expandedTranscriptPodcastId,
     onToggleTranscript,
+    onOpenFullTranscriptView, // Destructure prop
 }) => {
 
   const getVoiceDisplayName = (voiceId?: string): string => {
@@ -163,17 +164,27 @@ const StudioView: React.FC<StudioViewProps> = ({
                             ) : (
                                   <span className="text-xs text-gray-500" title="Audio data missing or empty">No Audio</span>
                             )}
-                            {podcast.scriptText && (podcast.audioB64Chunks && podcast.audioB64Chunks.length > 0) && ( // Also check for audio before showing transcript button
+                            {podcast.scriptText && (podcast.audioB64Chunks && podcast.audioB64Chunks.length > 0) && (
                               <button
                                   onClick={() => onToggleTranscript(podcast.id)}
                                   className={`p-1.5 sm:p-2 text-white rounded-full transition-colors ${isTranscriptVisible ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-600 hover:bg-gray-500'}`}
-                                  title={isTranscriptVisible ? "Hide Transcript" : "Show Transcript"}
-                                  aria-label={isTranscriptVisible ? "Hide Transcript" : "Show Transcript"}
+                                  title={isTranscriptVisible ? "Hide Inline Transcript" : "Show Inline Transcript"}
+                                  aria-label={isTranscriptVisible ? "Hide Inline Transcript" : "Show Inline Transcript"}
                                   aria-expanded={isTranscriptVisible}
                               >
                                   {isTranscriptVisible ? <ChevronUpIcon className="w-4 h-4 sm:w-5 sm:h-5"/> : <TranscriptIcon className="w-4 h-4 sm:w-5 sm:h-5" />}
                               </button>
                             )}
+                             {podcast.scriptText && (
+                                <button
+                                  onClick={() => onOpenFullTranscriptView(podcast.id)}
+                                  className="p-1.5 sm:p-2 text-white bg-teal-600 rounded-full hover:bg-teal-700 transition-colors"
+                                  title="View Full Transcript"
+                                  aria-label="View Full Transcript"
+                                >
+                                  <ArrowsPointingOutIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                                </button>
+                              )}
                           </>
                         )}
                         
@@ -223,7 +234,7 @@ const StudioView: React.FC<StudioViewProps> = ({
 
                     {isTranscriptVisible && podcast.scriptText && (
                       <div className="mt-4 pt-3 border-t border-gray-700">
-                        <h4 className="text-sm font-semibold text-gray-300 mb-2">Transcript:</h4>
+                        <h4 className="text-sm font-semibold text-gray-300 mb-2">Transcript (Inline Preview):</h4>
                         <div className="max-h-[calc(50vh-40px)] min-h-48 overflow-y-auto p-3 bg-gray-900 rounded prose dark:prose-invert prose-p:my-1 prose-headings:my-1.5 markdown-content">
                           <MarkdownRenderer markdownContent={podcast.scriptText} />
                         </div>

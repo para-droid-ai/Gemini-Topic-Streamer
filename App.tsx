@@ -10,12 +10,13 @@ import ApiKeyModal from './components/ApiKeyModal';
 import { Stream, StreamUpdate, StreamContextPreference, AppBackup, StreamDetailLevel, ChatMessage, PinnedChatMessage, ReasoningMode, AvailableGeminiModelId, GroundingChunk, Podcast } from './types';
 import { fetchStreamUpdates, PreviousContext, updateUserApiKey, isApiKeyEffectivelySet, getActiveKeySource, generatePodcastScript, generateSpeechFromText, generatePodcastTitleCardImage } from './services/geminiService';
 import { APP_NAME, DEFAULT_TEMPERATURE, DEFAULT_DETAIL_LEVEL, DEFAULT_CONTEXT_PREFERENCE, DEFAULT_REASONING_MODE, DEFAULT_THINKING_TOKEN_BUDGET, DEFAULT_AUTO_THINKING_BUDGET, USER_API_KEY_STORAGE_KEY, DEFAULT_GEMINI_MODEL_ID, TTS_DEFAULT_VOICE, TTS_SAMPLE_RATE, AvailableTTSVoiceId } from './constants'; 
-import { ArrowDownTrayIcon, ArrowUpTrayIcon, ListBulletIcon, TableCellsIcon, DocumentDuplicateIcon, ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon, MusicalNoteIcon } from './components/icons';
+import { ArrowDownTrayIcon, ArrowUpTrayIcon, ListBulletIcon, TableCellsIcon, DocumentDuplicateIcon, ChevronDownIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, KeyIcon, MicrophoneIcon } from './components/icons'; // Replaced MusicalNoteIcon
 import { convertToCSV, downloadFile } from './utils/exportUtils';
 import { getAllStreams, getAllUpdates, saveStreams, saveUpdate, deleteStreamFromDB, deleteUpdateFromDB, clearAllDataFromDB, deleteTtsAudio, getAllPodcasts, savePodcast, deletePodcast as deletePodcastFromDB } from './services/dbService';
 import StudioView from './components/StudioView';
 import CreatePodcastModal from './components/CreatePodcastModal';
 import { AudioPlaybackControls, base64ToFloat32Array, getPlaybackControls, loadAudioForPlayback, stopGlobalAudio, encodeWAV } from './utils/audioUtils';
+import FullTranscriptView from './components/FullTranscriptView'; // Added import
 
 type ViewMode = 'list' | 'grid' | 'studio';
 
@@ -49,6 +50,10 @@ const App: React.FC = () => {
   const podcastPlaybackControlsRef = useRef<AudioPlaybackControls | null>(null);
   const [expandedTranscriptPodcastId, setExpandedTranscriptPodcastId] = useState<string | null>(null);
   
+  // State for full-page transcript view
+  const [isFullTranscriptViewOpen, setIsFullTranscriptViewOpen] = useState(false);
+  const [fullViewTranscriptPodcastId, setFullViewTranscriptPodcastId] = useState<string | null>(null);
+
   useEffect(() => { loadingStatesRef.current = loadingStates; }, [loadingStates]);
 
   useEffect(() => {
@@ -733,7 +738,7 @@ const App: React.FC = () => {
     setIsPodcastPlaying(false);
     setPodcastCurrentTime(0);
     setPodcastDuration(0);
-    setExpandedTranscriptPodcastId(null); 
+    // Do not reset expandedTranscriptPodcastId here, allow it to persist
   }, []); 
 
   const handlePlayPodcast = useCallback(async (podcast: Podcast) => {
@@ -744,9 +749,6 @@ const App: React.FC = () => {
       } else {
         podcastPlaybackControlsRef.current.play();
         setIsPodcastPlaying(true);
-        if (podcast.scriptText && expandedTranscriptPodcastId !== podcast.id) { 
-          setExpandedTranscriptPodcastId(podcast.id);
-        }
       }
       return;
     }
@@ -760,9 +762,7 @@ const App: React.FC = () => {
     }
   
     setPlayingPodcastId(podcast.id);
-    if (podcast.scriptText) { 
-      setExpandedTranscriptPodcastId(podcast.id);
-    }
+    // Do not automatically expand transcript here, user controls it separately
   
     try {
       console.log(`Stitching ${podcast.audioB64Chunks.length} audio chunks for podcast ${podcast.id}...`);
@@ -812,7 +812,7 @@ const App: React.FC = () => {
       alert(`Failed to start podcast playback: ${error instanceof Error ? error.message : 'Unknown error'}`);
       resetPodcastPlayer();
     }
-  }, [playingPodcastId, isPodcastPlaying, resetPodcastPlayer, expandedTranscriptPodcastId]); 
+  }, [playingPodcastId, isPodcastPlaying, resetPodcastPlayer]); 
 
   const handleSeekPodcast = (time: number) => {
     if (podcastPlaybackControlsRef.current && podcastDuration > 0) {
@@ -824,6 +824,17 @@ const App: React.FC = () => {
   const handleTogglePodcastTranscript = (podcastId: string) => {
     setExpandedTranscriptPodcastId(prevId => prevId === podcastId ? null : podcastId);
   };
+  
+  const handleOpenFullTranscriptView = (podcastId: string) => {
+    setFullViewTranscriptPodcastId(podcastId);
+    setIsFullTranscriptViewOpen(true);
+  };
+
+  const handleCloseFullTranscriptView = () => {
+    setIsFullTranscriptViewOpen(false);
+    setFullViewTranscriptPodcastId(null);
+  };
+
 
   useEffect(() => { 
     return () => {
@@ -840,6 +851,8 @@ const App: React.FC = () => {
       </div>
     );
   }
+  
+  const podcastForFullView = podcasts.find(p => p.id === fullViewTranscriptPodcastId);
 
   return (
     <div className="flex flex-col h-screen antialiased">
@@ -889,7 +902,7 @@ const App: React.FC = () => {
                     className={`flex items-center font-semibold py-1.5 px-3 rounded-md text-sm transition-colors shadow ${viewMode === 'studio' ? 'bg-purple-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
                     title="Switch to Studio View"
                 >
-                    <MusicalNoteIcon className="w-4 h-4 mr-1.5" />
+                    <MicrophoneIcon className="w-4 h-4 mr-1.5" />
                     Studio
                 </button>
                 <div className="relative" ref={exportAllMenuRef}>
@@ -985,6 +998,7 @@ const App: React.FC = () => {
               onExportPodcastAudio={handleExportPodcastAudio}
               expandedTranscriptPodcastId={expandedTranscriptPodcastId}
               onToggleTranscript={handleTogglePodcastTranscript}
+              onOpenFullTranscriptView={handleOpenFullTranscriptView} // Pass handler
             />
           ) : (
             <StreamView
@@ -1031,6 +1045,12 @@ const App: React.FC = () => {
           onClose={() => setCreatePodcastModalOpen(false)}
           streams={streams}
           onGenerate={handleGeneratePodcast}
+        />
+      )}
+      {isFullTranscriptViewOpen && podcastForFullView && (
+        <FullTranscriptView
+          podcast={podcastForFullView}
+          onClose={handleCloseFullTranscriptView}
         />
       )}
     </div>
