@@ -492,17 +492,17 @@ export const generateSpeechFromText = async (
 
 export const generatePodcastScript = async (rawContent: string, title: string): Promise<string> => {
   const localAi = getAiClient();
-  const prompt = `You are an expert podcast scriptwriter. You will be given a collection of raw text from different topic streams, demarcated by [START STREAM: "STREAM NAME"] and [END STREAM: "STREAM NAME"].
+  const prompt = `You are an expert podcast scriptwriter. You will be given a collection of raw text from different topic streams, demarcated by [START STREAM: "STREAM NAME"] and [END STREAM: "STREAM NAME"]. This raw text is generated from other AI processes and may include information up to the current date, based on Google Search grounding at the time of its generation.
 
-Your task is to transform this raw text into a single, cohesive podcast script with the title "${title}".
+Your task is to transform THIS EXACT raw text into a single, cohesive podcast script with the title "${title}".
 
 The script must include:
-1.  A brief, engaging introduction that previews the topics to be discussed.
-2.  Smooth, conversational transitions between each topic stream. For example, "Now, turning our attention to..." or "In other news...".
-3.  The core content from the provided text, edited for flow and clarity as if it were being read aloud. Summarize where necessary to maintain a good pace.
-4.  A brief concluding summary that wraps up the report.
+1.  A brief, engaging introduction that previews the topics to be discussed, based *only* on the provided raw content.
+2.  Smooth, conversational transitions between each topic stream.
+3.  The core content FROM THE PROVIDED TEXT. You must edit this text for flow and clarity as if it were being read aloud, summarizing where necessary to maintain a good pace, BUT YOU MUST NOT INTRODUCE ANY INFORMATION, DATES, CORRECTIONS, OR DETAILS THAT ARE NOT EXPLICITLY PRESENT IN THE RAW CONTENT PROVIDED. Your role is to narrate and structure the given information, not to add to it or fact-check it against external knowledge. The provided raw content is the sole source of truth for this script.
+4.  A brief concluding summary that wraps up the report, based *only* on the provided raw content.
 
-The output should be ONLY the final, clean script text, ready for text-to-speech narration. Do not include any extra commentary, markdown formatting, or labels like "Introduction:".
+The output should be ONLY the final, clean script text, ready for text-to-speech narration. Do not include any other explanatory text, preamble, or markdown formatting, or labels like "Introduction:". Do not use your own knowledge cutoff date; rely solely on the information within the provided \`rawContent\`.
 
 Here is the raw content:
 ---

@@ -1,6 +1,6 @@
 # Gemini Topic Streamer
 
-**Gemini Topic Streamer** is a powerful, web-based application designed to help users create and maintain personalized, in-depth information feeds on specific topics. Leveraging the capabilities of Google's Gemini API, it acts like an intelligent, self-updating research assistant, providing comprehensive updates with search-backed grounding, a clear view of the AI's reasoning process if desired, and the ability to listen to content via Text-to-Speech.
+**Gemini Topic Streamer** is a powerful, web-based application designed to help users create and maintain personalized, in-depth information feeds on specific topics. Leveraging the capabilities of Google's Gemini API, it acts like an intelligent, self-updating research assistant, providing comprehensive updates with search-backed grounding, a clear view of the AI's reasoning process if desired, and the ability to listen to content via Text-to-Speech or consume it as a fully generated podcast.
 
 ## The Challenge: Staying Deeply Informed
 
@@ -10,7 +10,7 @@ In today's fast-paced information landscape, staying truly informed about specif
 *   Receive synthesized information rather than just lists of links.
 *   Understand how new information builds upon previous knowledge.
 *   Control the depth and breadth of the information received.
-*   Consume content in multiple ways, including listening.
+*   Consume content in multiple ways, including listening to individual updates or full podcast episodes.
 
 ## What Gemini Topic Streamer Does
 
@@ -19,93 +19,149 @@ This application empowers users to:
 1.  **Create "Topic Streams":** Define specific areas of interest with a descriptive name and a detailed "focus prompt" that guides the AI.
 2.  **Select AI Model:** Choose from available Gemini models (e.g., `gemini-2.5-flash-preview-04-17`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`) for each stream, allowing for different balances of speed, cost, and capability.
 3.  **Generate Rich Updates:** Request new updates for a stream at any time. The selected Gemini API model, with Google Search grounding, fetches, processes, and synthesizes relevant information.
-4.  **Listen to Updates:** Generate and play Text-to-Speech (TTS) audio for stream updates, with controls for play/pause, seek, speed adjustment, stop, and audio export (WAV).
-5.  **Control Information Flow:**
-    *   **Detail Level:** Choose between 'brief', 'comprehensive', or 'research' level reports.
+4.  **Listen to Updates:** Generate and play Text-to-Speech (TTS) audio for individual stream updates, with controls for play/pause, seek, speed adjustment, stop, and audio export (WAV). For lengthy updates, text is automatically chunked before TTS conversion to ensure reliability, and the resulting audio segments are seamlessly joined.
+5.  **Produce Podcasts in the "Studio":**
+    *   Select multiple source streams and specify the number of recent updates per stream.
+    *   Provide a podcast title and choose a TTS voice.
+    *   The AI generates a cohesive podcast script, narrating and structuring the content from the selected streams.
+    *   An artistic title card image is automatically generated using Imagen 3.
+    *   The script is converted to audio using Gemini TTS. Similar to individual updates, large scripts are intelligently chunked for reliable audio generation and then stitched together.
+    *   Manage, play (with progress bar and seeking), and export (WAV) generated podcasts. View podcast transcripts.
+6.  **Control Information Flow:**
+    *   **Detail Level:** Choose between 'brief', 'comprehensive', or 'research' level reports for stream updates.
     *   **Contextual Awareness (Stream Updates):** Opt for fresh updates ('none'), or instruct the AI to consider the last stream update ('last') or all previous stream updates ('all') to build upon existing knowledge and avoid redundancy.
     *   **Pinned Chat Context:** Manually pin important messages from "Deep Dive" chat sessions. These pinned messages are included in the prompt for new stream updates *only if* the stream's `contextPreference` (for past stream updates) is set to 'last' or 'all'.
-    *   **Model Parameters:** Fine-tune Temperature, Top-K, Top-P, and Seed.
+    *   **Model Parameters:** Fine-tune Temperature, Top-K, Top-P, and Seed for stream updates.
     *   **Reasoning Control (`reasoningMode`):**
-        *   **Off:** No specific reasoning/thinking process is requested from the model beyond standard generation.
-        *   **Request:** The model is prompted to use `<think>...</think>` tags to expose its reasoning process.
-            *   For models that officially support `thinkingConfig` (e.g., `gemini-2.5-flash-preview-04-17`), this is **"Recommended"**. The user can then set a "Thinking Token Budget" (Auto, Off, or a specific number) which adjusts the `thinkingConfig` API parameter. If "Auto", the model's default budget is used. If "Off", `thinkingBudget: 0` is sent.
-            *   For models that do *not* officially support `thinkingConfig`, this is **"Experimental"**. The prompt for `<think>` tags is still sent, but the `thinkingConfig` API parameter is omitted. The model *may* provide reasoning at its discretion. The "Thinking Token Budget" UI is still available but has no effect on the API call for these models.
-6.  **Consume Content Efficiently:** Updates are presented in clean, readable Markdown format, and can also be listened to.
-7.  **Explore Further with "Deep Dive" Chat:** Engage in a contextual chat session based on any specific stream update to ask follow-up questions or clarify details. This chat also uses Google Search grounding.
-8.  **Manage & Organize:**
-    *   View streams in a detailed list or a summarized grid view.
-    *   Edit, delete, and reorder streams.
-    *   Export individual updates or entire streams in various formats (TXT, MD, CSV), including audio for individual updates.
-    *   Export and import all application data (JSON backup).
+        *   **Off:** The AI provides the direct answer without exposing its thinking steps.
+        *   **Request:** The AI is prompted to use `<think>...</think>` tags to outline its reasoning process before providing the main content. This is useful for transparency and understanding the AI's approach. The effectiveness of this mode can vary based on whether the selected Gemini model officially supports `thinkingConfig` (recommended) or if it's experimental for that model.
+7.  **Deep Dive Chat:** Engage in a conversational chat with the AI, specifically about the content of a particular stream update, with Google Search grounding for up-to-date answers.
+8.  **Markdown Formatting:** Updates are presented in a clean, readable Markdown format.
+9.  **Data Persistence:** Streams and their updates are saved locally in your browser using IndexedDB, allowing you to pick up where you left off.
+10. **Export & Import:**
+    *   Export individual stream updates to TXT, MD, or CSV.
+    *   Export entire stream histories to TXT, MD, or CSV.
+    *   Export all application data (streams, updates, podcasts) to a single JSON backup file.
+    *   Import application data from a JSON backup file.
+11. **API Key Management:** Users can provide and manage their own Google Gemini API key directly within the application. The key is stored securely in browser local storage.
+12. **Customizable Viewing:**
+    *   **List View:** Focused view of a single selected stream.
+    *   **Grid View:** Overview of multiple streams, each in its own card, with pagination and options to maximize individual streams or expand all summaries.
+    *   **Studio View:** Dedicated interface for creating, managing, and playing podcasts.
+    *   **Collapsible Sidebar:** Maximize screen real estate for content.
+13. **Optimized Focus Prompts:** An AI-powered feature to help refine your stream focus prompts for better results.
 
-## How It Works
+## How It Works (Core Stream Update Flow)
 
-1.  **Stream Definition:** The user creates a stream, providing a name, a focus prompt, and selecting a desired Gemini model and other parameters like `reasoningMode`.
-2.  **API Interaction (Content):** When an update is requested, the application constructs a detailed prompt for the Gemini API. This prompt includes:
-    *   The stream's name and focus.
-    *   The selected `modelName` for the stream.
-    *   Instructions for the desired detail level and Markdown formatting.
-    *   System instructions for the AI's role.
-    *   **Conditionally, User-Pinned Chat Context:** If `stream.contextPreference` is 'last' or 'all', any chat messages pinned by the user for this stream are included.
-    *   Optionally, the content of previous *stream updates* (based on `stream.contextPreference`).
-    *   Configuration for `temperature`, `topK`, `topP`, `seed`.
-    *   **Reasoning Instructions:** If `reasoningMode` is 'request', the prompt includes instructions for the model to use `<think>...</think>` tags.
-    *   **Conditional `thinkingConfig`:** If the selected model officially supports `thinkingConfig` and `reasoningMode` is 'request', the `thinkingConfig` (with `thinkingBudget`) is added to the API call based on user settings (Auto/Manual/Off). If `reasoningMode` is 'off' (and model supports it), `thinkingBudget: 0` is sent. If the model does not support `thinkingConfig`, this parameter is omitted.
-    *   Crucially, it enables `googleSearch` for grounding.
-3.  **Content Generation & Grounding:** The selected Gemini API model processes the prompt, performs Google searches, and generates the update.
-4.  **Text-to-Speech (TTS):** For any stream update, users can request audio generation using the `gemini-2.5-flash-preview-tts` model.
-5.  **Response Processing:** The application receives the AI's response, including main content, optional reasoning (if `<think>` tags are used), and grounding metadata.
-6.  **Display & Interaction:** The update is rendered. Users can read, listen, export, or "Deep Dive" with chat.
+1.  The user creates a "Topic Stream" with a name (e.g., "Latest in Quantum Entanglement Research") and a "focus prompt" (e.g., "Provide a comprehensive update on recent breakthroughs, experiments, and theoretical advancements in quantum entanglement, including implications for quantum computing and communication. Cite key papers and research institutions.").
+2.  The user selects a Gemini model, temperature, detail level, and context preference.
+3.  When an update is requested:
+    *   The application constructs a detailed prompt for the Gemini API, incorporating the stream's focus, selected parameters, and optionally, context from previous updates or pinned chat messages.
+    *   If `reasoningMode` is 'request', specific instructions are added to prompt the model to expose its thinking process using `<think>` tags.
+    *   The Gemini API (e.g., `gemini-2.5-flash-preview-04-17`) processes the prompt, using Google Search for grounding to ensure information is current.
+    *   The response, formatted in Markdown and potentially including `<think>` blocks, is returned.
+    *   The application parses the response, separating reasoning content from the main content.
+    *   The new update (main content, reasoning, and grounding metadata) is displayed and saved to IndexedDB.
+4.  Users can then read the update, view the reasoning, explore cited sources, engage in a "Deep Dive" chat, or generate TTS audio (which involves chunking for large texts).
 
 ## Unique Differentiators
 
-*   **Model Choice:** Users can select different Gemini models per stream, including `gemini-2.5-flash-preview-04-17`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-pro-preview-05-06`, and `gemini-2.5-pro-preview-06-05`.
-*   **Proactive & Curated Information Flow:** Builds a narrative on topics over time.
-*   **Multi-Modal Consumption:** Read Markdown or listen via TTS.
-*   **Depth, Synthesis & Structure:** Produces in-depth, structured reports.
-*   **Evolving Contextual Understanding:** Focuses on novel information, with explicit control over past stream update context and conditional pinned chat context.
-*   **Transparent AI Reasoning:** User-controlled `reasoningMode` ('off'/'request'). UI distinguishes between officially supported ("Recommended") thinking features and "Experimental" attempts on other models.
-*   **Focused Exploration with Contextual Chat:** Targeted follow-up on updates with search grounding.
-*   **Data Ownership & Portability:** Local storage and comprehensive export.
-*   **Customization:** Extensive control over detail, context, model parameters, and reasoning requests.
+*   **Focused, Continuous Tracking:** Unlike general search or one-off AI queries, it's designed for ongoing, in-depth monitoring of specific topics.
+*   **Controllable Detail & Context:** Users can specify the desired level of detail and how much previous information the AI should consider.
+*   **Transparent Reasoning (Optional):** The `<think>` tag exposure offers a unique look into the AI's process.
+*   **Search-Grounded Information:** Ensures updates are based on current information from the web.
+*   **Multi-Modal Consumption:** Read, listen to individual updates (with robust TTS for long content via chunking), or generate full podcast episodes in the Studio.
+*   **Client-Side & Private:** All data (streams, updates, API key) is stored locally in the user's browser. No server-side accounts or data storage (beyond Gemini API interactions).
+*   **Model Selection Flexibility:** Choose different Gemini models per stream to balance needs.
 
 ## Key Features
 
-*   **Stream Creation & Management.**
-*   **Selectable AI Models per Stream.**
-*   **Customizable Update Generation:** Detail Level, Context settings (for stream updates & pinned chat), Temperature, `reasoningMode` ('off'/'request'), Thinking Token Budget (conditional on model support and `reasoningMode`), Top-K, Top-P, Seed.
-*   **Text-to-Speech (TTS) with Playback Controls & Export.**
-*   **Rich Markdown Rendering.**
-*   **Google Search Grounding (for stream updates and chat).**
-*   **"Deep Dive" Chat with Pinning Functionality.**
-*   **Data Export & Import (JSON, TXT, MD, CSV, WAV).**
-*   **Multiple Views (List & Grid).**
-*   **Responsive Design.**
-*   **Local Storage (IndexedDB).**
-*   **API Key Management.**
+*   Create and manage multiple Topic Streams.
+*   Selectable Gemini models per stream.
+*   Adjustable Temperature, Detail Level, Context Preference, Top-K, Top-P, Seed per stream.
+*   AI-generated, Markdown-formatted stream updates.
+*   Google Search grounding for up-to-date information.
+*   Optional display of AI's reasoning process.
+*   "Deep Dive" chat about specific updates (with search grounding).
+*   Pinning important chat messages for stream context.
+*   List, Grid, and Studio view modes.
+*   Stream and update export (TXT, MD, CSV).
+*   Full application data backup (JSON) and import.
+*   Text-to-Speech for stream updates with playback controls (play, pause, stop, seek, speed, export). Handles large updates by chunking text for reliable TTS generation.
+*   **Podcast Studio:**
+    *   Generate podcast scripts from stream content.
+    *   Generate podcast title card images.
+    *   Convert scripts to audio using Gemini TTS, intelligently chunking large scripts for robust processing.
+    *   Manage, play, and export podcasts (WAV).
+    *   View podcast transcripts.
+*   User-managed API Key (stored in browser local storage).
+*   Responsive design.
+*   Data persistence via IndexedDB.
 
-## Getting Started
+## Technologies Used
 
-1.  **API Key:** Ensure `API_KEY` environment variable is set or provide one via the UI.
-2.  **Access:** Open `index.html`.
-3.  **Create a Stream:**
-    *   Provide Name, Focus Prompt (use "Optimize Focus").
-    *   **Select an AI Model.**
-    *   Adjust Temperature, Detail Level, Context, `reasoningMode`, and other advanced parameters as needed.
-4.  **Fetch Updates & Explore.**
+*   **React 19**
+*   **TypeScript**
+*   **@google/genai (Gemini API Client)**
+*   Tailwind CSS (via CDN)
+*   `react-markdown` & `remark-gfm` for Markdown rendering.
+*   `jszip` for CSV export packaging.
+*   `idb` for IndexedDB interactions.
+*   HTML5, CSS3, ES Modules
 
-## Technology Stack
+## Getting Started (Using Vercel for Testing)
 
-*   **Frontend:** React, TypeScript
-*   **AI:** Google Gemini API (`@google/genai` SDK). Models:
-    *   Content: `gemini-2.5-flash-preview-04-17`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05` (selectable)
-    *   TTS: `gemini-2.5-flash-preview-tts`
-*   **Styling:** Tailwind CSS
-*   **Markdown:** `react-markdown`, `remark-gfm`
-*   **Audio:** Web Audio API
-*   **Data Persistence:** IndexedDB (`idb` library)
-*   **Utilities:** JSZip
+The primary way to test and use the Gemini Topic Streamer is by deploying your own instance to Vercel. This allows you to use your own Google Gemini API key directly in the deployed application.
+
+1.  **Prerequisites:**
+    *   A [GitHub](https://github.com/) account.
+    *   A [Vercel](https://vercel.com/) account.
+    *   A Google Gemini API Key (you can get one from [Google AI Studio](https://aistudio.google.com/)).
+
+2.  **Fork the Repository:**
+    *   Go to the [Gemini Topic Streamer GitHub repository](https://github.com/your-username/gemini-topic-streamer) (replace with the actual link if you have one, or instruct users to find it).
+    *   Click the "Fork" button in the top-right corner to create a copy of the repository under your GitHub account.
+
+3.  **Deploy to Vercel:**
+    *   Log in to your Vercel dashboard.
+    *   Click "Add New..." and then "Project".
+    *   Under "Import Git Repository," select your forked `gemini-topic-streamer` repository.
+    *   Vercel should automatically detect that it's a React/TypeScript project. You generally don't need to change the default build and output settings.
+        *   Framework Preset: `Vite` (or it might auto-detect as Create React App if configuration matches that more closely, but Vite is generally a good default for modern React with TS).
+        *   Build Command: Usually `npm run build` or `vite build`.
+        *   Output Directory: `dist`.
+    *   Click "Deploy." Vercel will build and deploy your application.
+
+4.  **Using the Deployed Application:**
+    *   Once deployed, Vercel will provide you with a URL (e.g., `your-project-name.vercel.app`).
+    *   Open this URL in your browser.
+    *   The application will guide you to enter your Google Gemini API key via the UI (click the "API Key" button in the header). This key is stored locally in your browser and is necessary for the app to function.
+    *   You can now start creating streams, fetching updates, and exploring the features!
+
+**Note on Local Development (for contributors):**
+If you intend to contribute to the development of Gemini Topic Streamer, you'll need a local development environment:
+*   Clone your forked repository.
+*   Ensure Node.js (LTS version recommended) and npm are installed.
+*   Install dependencies: `npm install`
+*   You'll need a way to serve the `index.html` and compile the TypeScript/JSX. A development server like **Vite** is recommended.
+    *   Install Vite: `npm install --save-dev vite @vitejs/plugin-react`
+    *   Create a `vite.config.ts` file (see Vite documentation for setup).
+    *   Update `package.json` scripts:
+        ```json
+        "scripts": {
+          "dev": "vite",
+          "build": "tsc && vite build",
+          "preview": "vite preview"
+        }
+        ```
+    *   Run the development server: `npm run dev`
+*   You will also need to manage your Gemini API Key for local development. The application attempts to use `process.env.API_KEY`. For client-side development with Vite, you'd typically set this in a `.env.local` file as `VITE_API_KEY=your_key_here` and access it in `geminiService.ts` via `import.meta.env.VITE_API_KEY`. The application's UI key management will override this if a key is entered there.
+
+
+## Disclaimer
+
+This application interacts with the Google Gemini API. Use of the API is subject to Google's terms of service and pricing. Ensure you have a valid API key and are aware of potential costs associated with its usage. The API key is stored locally in your browser and is not transmitted to any server other than Google's.
 
 ---
 
-Gemini Topic Streamer aims to transform information gathering into proactive, intelligent, and continuous learning.
+This project provides a robust foundation for deep topic exploration. Future enhancements are planned to further improve its capabilities and user experience. See the [ROADMAP.md](docs/ROADMAP.md) and [TODO.md](docs/TODO.md) for more details.
