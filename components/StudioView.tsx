@@ -2,7 +2,7 @@
 // components/StudioView.tsx
 import React from 'react';
 import { Podcast, Stream } from '../types'; 
-import { PlusIcon, TrashIcon, PlayIcon, LoadingSpinner, PauseIcon, StopCircleIcon, ArrowDownTrayIcon as ExportAudioIcon, DocumentTextIcon as TranscriptIcon, ChevronUpIcon, ChevronDownIcon } from './icons'; 
+import { PlusIcon, TrashIcon, PlayIcon, LoadingSpinner, PauseIcon, StopCircleIcon, ArrowDownTrayIcon as ExportAudioIcon, DocumentTextIcon as TranscriptIcon, ChevronUpIcon, ChevronDownIcon, PhotoIcon } from './icons'; // Added PhotoIcon
 import { formatTimeAgo } from './StreamUpdateCard'; 
 import MarkdownRenderer from './MarkdownRenderer'; 
 import { TTS_DEFAULT_VOICE, AVAILABLE_TTS_VOICES } from '../constants';
@@ -77,12 +77,21 @@ const StudioView: React.FC<StudioViewProps> = ({
             const isTranscriptVisible = expandedTranscriptPodcastId === podcast.id;
             return (
                 <div key={podcast.id} className="bg-gray-800 rounded-lg shadow-md border border-gray-700 flex flex-col">
-                  {podcast.titleCardImageUrl && (
+                  {podcast.titleCardImageUrl ? (
                     <img 
                         src={podcast.titleCardImageUrl} 
                         alt={`Title card for ${podcast.title}`} 
                         className="w-full h-48 object-cover rounded-t-lg" 
                     />
+                  ) : (
+                    podcast.status === 'complete' && ( // Only show placeholder if generation was supposed to be complete
+                        <div className="w-full h-48 bg-gray-700 rounded-t-lg flex items-center justify-center">
+                            <div className="text-center text-gray-500">
+                                <PhotoIcon className="w-16 h-16 mx-auto opacity-50" />
+                                <p className="text-xs mt-1">Title card image not available.</p>
+                            </div>
+                        </div>
+                    )
                   )}
                   <div className="p-4 flex flex-col flex-grow">
                     <div className="flex items-start justify-between w-full mb-2">
@@ -118,7 +127,7 @@ const StudioView: React.FC<StudioViewProps> = ({
                         )}
                         {podcast.status === 'complete' && (
                           <>
-                            {podcast.audioB64Chunks && podcast.audioB64Chunks.length > 0 && (
+                            {podcast.audioB64Chunks && podcast.audioB64Chunks.length > 0 ? (
                               <>
                                 <button
                                     onClick={() => onPlayPodcast(podcast)}
@@ -134,7 +143,7 @@ const StudioView: React.FC<StudioViewProps> = ({
                                 </button>
                                 {isPlayingThis && (
                                   <button
-                                      onClick={() => onPlayPodcast({ ...podcast, audioB64Chunks: undefined})} 
+                                      onClick={() => onPlayPodcast({ ...podcast, audioB64Chunks: undefined})} // Effectively a stop
                                       className="p-1.5 sm:p-2 text-white bg-red-600 rounded-full hover:bg-red-700 transition-colors"
                                       title="Stop Podcast"
                                       aria-label="Stop Podcast"
@@ -151,11 +160,10 @@ const StudioView: React.FC<StudioViewProps> = ({
                                   <ExportAudioIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                                 </button>
                               </>
-                            )}
-                            {(!podcast.audioB64Chunks || podcast.audioB64Chunks.length === 0) && (
+                            ) : (
                                   <span className="text-xs text-gray-500" title="Audio data missing or empty">No Audio</span>
                             )}
-                            {podcast.scriptText && (
+                            {podcast.scriptText && (podcast.audioB64Chunks && podcast.audioB64Chunks.length > 0) && ( // Also check for audio before showing transcript button
                               <button
                                   onClick={() => onToggleTranscript(podcast.id)}
                                   className={`p-1.5 sm:p-2 text-white rounded-full transition-colors ${isTranscriptVisible ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-600 hover:bg-gray-500'}`}

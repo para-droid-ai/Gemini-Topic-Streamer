@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, GenerateContentResponse, GroundingChunk as GenAIGroundingChunk, Chat, Content } from "@google/genai";
 import { 
     GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, 
@@ -528,10 +529,11 @@ ${rawContent}
 
 export const generatePodcastTitleCardImage = async (podcastTitle: string, scriptContent: string): Promise<string | null> => {
   const localAi = getAiClient();
-  // Take a short excerpt of the script for thematic context, remove newlines for better prompt flow.
-  const scriptExcerpt = scriptContent.substring(0, 300).replace(/\n/g, " "); 
+  const scriptExcerpt = scriptContent.substring(0, 350).replace(/\n/g, " "); 
 
-  const prompt = `Create a visually striking title card image for a podcast episode. The podcast title is "${podcastTitle}". The episode content is about: "${scriptExcerpt}". The image should be artistic and representative of the themes. If possible, incorporate the podcast title text "${podcastTitle}" cleanly and legibly into the image design. Modern, clean, and engaging style. Minimal or no other text beyond the podcast title.`;
+  const prompt = `Generate a purely visual artwork for a podcast title card. This image must NOT contain any text, letters, words, numbers, or written symbols of any kind.
+The visual theme, subject matter, and mood of the image should be directly inspired by the following podcast script excerpt: "${scriptExcerpt}".
+Create an artistic, modern, and engaging image that captures the essence of this content. Avoid generic representations; focus on unique visual elements suggested by the script. For example, if the script mentions 'lunar missions' and 'technology', the image could feature a stylized moon and abstract technological patterns, not just a plain photo of the moon. If it mentions 'economic uncertainty' and 'global trade', it could be an abstract representation of interconnected but fluctuating elements. The image should be suitable as a visually striking, text-free thumbnail.`;
 
   try {
     const response = await localAi.models.generateImages({
@@ -544,11 +546,10 @@ export const generatePodcastTitleCardImage = async (podcastTitle: string, script
       const base64ImageBytes = response.generatedImages[0].image.imageBytes;
       return `data:image/jpeg;base64,${base64ImageBytes}`;
     }
-    console.warn("No image generated or image data missing from Imagen 3 response for podcast title card.");
+    console.warn("No image generated or image data missing from Imagen 3 response for podcast title card. Prompt used:", prompt);
     return null;
   } catch (error) {
-    console.error("Error generating podcast title card image with Imagen 3:", error);
-    // Do not throw, allow podcast generation to continue without an image
+    console.error("Error generating podcast title card image with Imagen 3. Prompt used:", prompt, "Error:", error);
     return null;
   }
 };
