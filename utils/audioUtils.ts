@@ -2,7 +2,6 @@
 import { downloadFile } from './exportUtils';
 
 let audioContext: AudioContext | null = null;
-let masterAudioBuffer: AudioBuffer | null = null;
 let currentSourceNode: AudioBufferSourceNode | null = null;
 
 let isPlayingGlobally = false;
@@ -12,7 +11,7 @@ let globalAudioContextStartTime = 0;
 let globalBufferStartOffset = 0;   
 
 let onEndCallbackGlobal: (() => void) | null = null;
-let onErrorCallbackGlobal: ((error: any) => void) | null = null;
+let onErrorCallbackGlobal: ((error: any) => void) | null = null; 
 let onTimeUpdateCallbackGlobal: ((currentTime: number) => void) | null = null;
 let timeUpdateInterval: number | null = null;
 
@@ -38,8 +37,9 @@ export function base64ToFloat32Array(base64String: string): Float32Array {
 
     if (bytes.buffer.byteLength % 2 !== 0) {
         console.warn("PCM data length is not a multiple of 2, potential truncation or corruption.");
-        // Ensure buffer is even for Int16Array
+        // Adjust to the largest multiple of 2 bytes
         const safeBufferLength = Math.floor(bytes.buffer.byteLength / 2) * 2;
+        if (safeBufferLength === 0) return new Float32Array(0); // Handle case where it's less than 2 bytes
         const safeBufferView = new Uint8Array(bytes.buffer, 0, safeBufferLength);
         const int16Array = new Int16Array(safeBufferView.buffer, safeBufferView.byteOffset, safeBufferView.byteLength / 2);
         const float32Array = new Float32Array(int16Array.length);
@@ -48,6 +48,7 @@ export function base64ToFloat32Array(base64String: string): Float32Array {
         }
         return float32Array;
     } else {
+        if (bytes.buffer.byteLength === 0) return new Float32Array(0);
         const int16Array = new Int16Array(bytes.buffer);
         const float32Array = new Float32Array(int16Array.length);
         for (let i = 0; i < int16Array.length; i++) {
@@ -57,15 +58,18 @@ export function base64ToFloat32Array(base64String: string): Float32Array {
     }
   } catch (e) {
     console.error("Error in base64ToFloat32Array:", e);
-    if (onErrorCallbackGlobal) onErrorCallbackGlobal(e);
-    return new Float32Array(0);
+    throw e; 
   }
 }
 
 function _cleanupCurrentSource() {
     if (currentSourceNode) {
-        currentSourceNode.onended = null;
-        try { currentSourceNode.stop(); } catch (e) { /* ignore if already stopped or not started */ }
+        currentSourceNode.onended = null; // CRITICAL: Detach handler before stopping
+        try { 
+            currentSourceNode.stop(); 
+        } catch (e) { 
+            // console.warn("Error stopping source node (might be already stopped or not started):", e);
+        }
         currentSourceNode.disconnect();
         currentSourceNode = null;
     }
@@ -78,148 +82,74 @@ function _stopTimer() {
     }
 }
 
-function _startTimer() {
+function _startTimer(getCurrentTimeFn: () => number) {
     _stopTimer();
     timeUpdateInterval = window.setInterval(() => {
         if (isPlayingGlobally && !isPausedGlobally && onTimeUpdateCallbackGlobal) {
-            onTimeUpdateCallbackGlobal(getCurrentPlaybackTimeInternal());
+             onTimeUpdateCallbackGlobal(getCurrentTimeFn());
         }
-    }, 250); // Update ~4 times a second
+    }, 250); 
 }
 
 export async function loadAudioForPlayback(
-    base64PcmData: string,
+    float32PcmData: Float32Array, 
     sampleRate: number,
-    onLoaded: (duration: number) => void,
     onError: (error: any) => void
-): Promise<void> {
-    stopGlobalAudio(); 
-    masterAudioBuffer = null;
-    onErrorCallbackGlobal = onError;
+): Promise<AudioBuffer | null> {
+    stopGlobalAudio(); // Ensure any previous global audio is stopped
 
     const context = getAudioContext();
-    const float32PcmData = base64ToFloat32Array(base64PcmData);
 
     if (!float32PcmData || float32PcmData.length === 0) {
-        onError(new Error("Decoded PCM data is empty."));
-        return;
+        onError(new Error("Provided PCM data is empty."));
+        return null;
     }
 
     try {
-        masterAudioBuffer = context.createBuffer(1, float32PcmData.length, sampleRate);
-        masterAudioBuffer.copyToChannel(float32PcmData, 0);
-        onLoaded(masterAudioBuffer.duration);
+        const audioBuffer = context.createBuffer(1, float32PcmData.length, sampleRate);
+        audioBuffer.copyToChannel(float32PcmData, 0);
+        return audioBuffer;
     } catch (bufferError) {
         console.error("Error creating AudioBuffer:", bufferError);
         onError(bufferError);
-        masterAudioBuffer = null;
+        return null;
     }
 }
 
-function _startPlaybackInternal(offsetSeconds: number) {
-    if (!masterAudioBuffer) {
-        if (onErrorCallbackGlobal) onErrorCallbackGlobal(new Error("Audio buffer not loaded."));
-        return;
-    }
-    const context = getAudioContext();
-    _cleanupCurrentSource();
-
-    currentSourceNode = context.createBufferSource();
-    currentSourceNode.buffer = masterAudioBuffer;
-    currentSourceNode.playbackRate.value = currentGlobalPlaybackRate;
-    currentSourceNode.connect(context.destination);
-
-    currentSourceNode.onended = () => {
-        if (currentSourceNode && isPlayingGlobally && !isPausedGlobally) {
-            // Check if it truly ended (or very close to it)
-            const endedNaturally = masterAudioBuffer && (globalBufferStartOffset + (context.currentTime - globalAudioContextStartTime) * currentGlobalPlaybackRate >= masterAudioBuffer.duration - 0.1);
-            if (endedNaturally) {
-                 _cleanupCurrentSource();
-                 isPlayingGlobally = false;
-                 isPausedGlobally = false;
-                 globalBufferStartOffset = 0; // Reset to start for next play, or to duration?
-                 _stopTimer();
-                 if (onTimeUpdateCallbackGlobal && masterAudioBuffer) onTimeUpdateCallbackGlobal(masterAudioBuffer.duration);
-                 if (onEndCallbackGlobal) onEndCallbackGlobal();
-            }
-        }
-    };
-    
-    try {
-        currentSourceNode.start(0, offsetSeconds);
-        globalAudioContextStartTime = context.currentTime;
-        globalBufferStartOffset = offsetSeconds;
-        isPlayingGlobally = true;
-        isPausedGlobally = false;
-        _startTimer();
-    } catch (e) {
-        if (onErrorCallbackGlobal) onErrorCallbackGlobal(e);
-        _cleanupCurrentSource();
-    }
-}
-
-function getCurrentPlaybackTimeInternal(): number {
-    if (!masterAudioBuffer) return 0;
-    if (isPausedGlobally) return globalBufferStartOffset; // When paused, this stores the exact pause time
-    if (isPlayingGlobally && currentSourceNode) {
-        const context = getAudioContext();
-        const elapsed = (context.currentTime - globalAudioContextStartTime) * currentGlobalPlaybackRate;
-        return Math.min(globalBufferStartOffset + elapsed, masterAudioBuffer.duration);
-    }
-    return globalBufferStartOffset; 
-}
-
-// Function to encode Float32Array PCM data to WAV ArrayBuffer
-function encodeWAV(samples: Float32Array, sampleRate: number, numChannels: number): ArrayBuffer {
-    const EOL = '\r\n';
-    const bytesPerSample = 2; // 16-bit PCM
+export function encodeWAV(samples: Float32Array, sampleRate: number, numChannels: number): ArrayBuffer {
+    const bytesPerSample = 2; 
     const blockAlign = numChannels * bytesPerSample;
     const byteRate = sampleRate * blockAlign;
 
     const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
     const view = new DataView(buffer);
 
-    /* RIFF identifier */
+    function writeString(view: DataView, offset: number, string: string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+
     writeString(view, 0, 'RIFF');
-    /* RIFF chunk length */
     view.setUint32(4, 36 + samples.length * bytesPerSample, true);
-    /* RIFF type */
     writeString(view, 8, 'WAVE');
-    /* FMT sub-chunk */
     writeString(view, 12, 'fmt ');
-    /* FMT chunk length */
     view.setUint32(16, 16, true);
-    /* Audio format (PCM) */
     view.setUint16(20, 1, true);
-    /* Number of channels */
     view.setUint16(22, numChannels, true);
-    /* Sample rate */
     view.setUint32(24, sampleRate, true);
-    /* Byte rate (SampleRate * NumChannels * BitsPerSample/8) */
     view.setUint32(28, byteRate, true);
-    /* Block align (NumChannels * BitsPerSample/8) */
     view.setUint16(32, blockAlign, true);
-    /* Bits per sample */
     view.setUint16(34, 16, true);
-    /* DATA sub-chunk */
     writeString(view, 36, 'data');
-    /* DATA chunk length */
     view.setUint32(40, samples.length * bytesPerSample, true);
 
-    // Write PCM samples
     let offset = 44;
     for (let i = 0; i < samples.length; i++, offset += 2) {
         const s = Math.max(-1, Math.min(1, samples[i]));
         view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
     }
-
     return buffer;
-}
-
-function writeString(view: DataView, offset: number, string: string) {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-    }
 }
 
 
@@ -232,24 +162,87 @@ export interface AudioPlaybackControls {
     getCurrentTime: () => number;
     getDuration: () => number;
     cleanup: () => void;
-    exportWav: (filename: string) => void; // New method
+    exportWav: (filename: string) => void;
 }
 
 export function getPlaybackControls(
+    audioBuffer: AudioBuffer,
     onEnd: () => void,
-    onError: (error: any) => void,
+    onError: (error: any) => void, 
     onTimeUpdate: (currentTime: number) => void
 ): AudioPlaybackControls {
+    
     onEndCallbackGlobal = onEnd;
     onErrorCallbackGlobal = onError;
     onTimeUpdateCallbackGlobal = onTimeUpdate;
 
-    const play = () => {
-        if (!masterAudioBuffer) {
-            if (onErrorCallbackGlobal) onErrorCallbackGlobal(new Error("Audio not loaded to play."));
-            return;
+    const _startPlaybackInternal = (offsetSeconds: number) => {
+        const context = getAudioContext();
+        _cleanupCurrentSource(); 
+
+        currentSourceNode = context.createBufferSource();
+        currentSourceNode.buffer = audioBuffer;
+        currentSourceNode.playbackRate.value = currentGlobalPlaybackRate;
+        currentSourceNode.connect(context.destination);
+        
+        // Store reference to these specific controls for the timer
+        (currentSourceNode as any)._playbackControlsRef = playbackControlsInstance; 
+
+        currentSourceNode.onended = () => {
+             // Check if this 'onended' is for the node we think is current
+            if (currentSourceNode === null || currentSourceNode.buffer !== audioBuffer) {
+                return; 
+            }
+            // Only process if it was playing or paused (i.e., not already stopped and cleaned up)
+            const wasPlayingOrPaused = isPlayingGlobally || isPausedGlobally;
+
+            _cleanupCurrentSource(); // Nulls out currentSourceNode, critical for state management
+            isPlayingGlobally = false;
+            isPausedGlobally = false;
+            globalBufferStartOffset = audioBuffer.duration; 
+            _stopTimer();
+
+            if (onTimeUpdateCallbackGlobal) onTimeUpdateCallbackGlobal(audioBuffer.duration);
+            if (wasPlayingOrPaused && onEndCallbackGlobal) {
+                onEndCallbackGlobal();
+            }
+        };
+        
+        try {
+            currentSourceNode.start(0, offsetSeconds);
+            globalAudioContextStartTime = context.currentTime;
+            globalBufferStartOffset = offsetSeconds;
+            isPlayingGlobally = true;
+            isPausedGlobally = false;
+            _startTimer(getCurrentPlaybackTimeInternal);
+        } catch (e) {
+            if (onErrorCallbackGlobal) onErrorCallbackGlobal(e);
+            _cleanupCurrentSource();
         }
-        _startPlaybackInternal(globalBufferStartOffset); 
+    };
+
+    const getCurrentPlaybackTimeInternal = (): number => {
+        if (!isPlayingGlobally && !isPausedGlobally) return globalBufferStartOffset; 
+        if (isPausedGlobally) return globalBufferStartOffset; 
+        
+        if (isPlayingGlobally && currentSourceNode && currentSourceNode.buffer === audioBuffer) { 
+            const context = getAudioContext();
+            const elapsed = (context.currentTime - globalAudioContextStartTime) * currentGlobalPlaybackRate;
+            return Math.min(globalBufferStartOffset + elapsed, audioBuffer.duration);
+        }
+        return globalBufferStartOffset; 
+    };
+    
+    const play = () => {
+        if (audioContext?.state === 'suspended') {
+            audioContext.resume().then(() => {
+                _startPlaybackInternal(globalBufferStartOffset);
+            }).catch(err => {
+                if (onErrorCallbackGlobal) onErrorCallbackGlobal(err);
+            });
+        } else {
+            _startPlaybackInternal(globalBufferStartOffset); 
+        }
     };
 
     const pause = () => {
@@ -264,36 +257,37 @@ export function getPlaybackControls(
     };
     
     const stop = () => {
-        _cleanupCurrentSource();
+        const wasActive = isPlayingGlobally || isPausedGlobally;
+        _cleanupCurrentSource(); // This nulls currentSourceNode and its onended
         isPlayingGlobally = false;
         isPausedGlobally = false;
+        const finalTime = globalBufferStartOffset; 
         globalBufferStartOffset = 0; 
         _stopTimer();
-        if (onTimeUpdateCallbackGlobal) onTimeUpdateCallbackGlobal(0); 
-        if (onEndCallbackGlobal) onEndCallbackGlobal(); 
+        if (onTimeUpdateCallbackGlobal) onTimeUpdateCallbackGlobal(finalTime > 0 ? finalTime : 0);
+        // Do NOT call onEndCallbackGlobal here. It's called by the natural 'onended' or handled by the caller of stop (e.g. resetPodcastPlayer).
     };
 
     const seek = (timeInSeconds: number) => {
-        if (!masterAudioBuffer) return;
         const originallyPaused = isPausedGlobally;
         const originallyPlaying = isPlayingGlobally;
 
-        const newOffset = Math.max(0, Math.min(timeInSeconds, masterAudioBuffer.duration));
+        const newOffset = Math.max(0, Math.min(timeInSeconds, audioBuffer.duration));
         if (onTimeUpdateCallbackGlobal) onTimeUpdateCallbackGlobal(newOffset); 
 
         if (originallyPlaying || originallyPaused) {
             _cleanupCurrentSource(); 
+            globalBufferStartOffset = newOffset; 
             _startPlaybackInternal(newOffset); 
             if (originallyPaused) { 
                 pause(); 
             }
-        } else {
+        } else { 
             globalBufferStartOffset = newOffset; 
         }
     };
     
     const setPlaybackRate = (rate: number) => {
-        if (!masterAudioBuffer) return;
         const originallyPaused = isPausedGlobally;
         const originallyPlaying = isPlayingGlobally;
         
@@ -302,6 +296,7 @@ export function getPlaybackControls(
         
         if (originallyPlaying || originallyPaused) {
             _cleanupCurrentSource(); 
+            globalBufferStartOffset = currentTimeForRestart; 
             _startPlaybackInternal(currentTimeForRestart); 
             if (originallyPaused) { 
                 pause();
@@ -309,26 +304,14 @@ export function getPlaybackControls(
         }
     };
 
-    const getCurrentTime = (): number => {
-        return getCurrentPlaybackTimeInternal();
-    };
-
-    const getDuration = (): number => {
-        return masterAudioBuffer ? masterAudioBuffer.duration : 0;
-    };
+    const getCurrentTime = (): number => getCurrentPlaybackTimeInternal();
+    const getDuration = (): number => audioBuffer.duration;
 
     const exportWav = (filename: string) => {
-        if (!masterAudioBuffer) {
-            if (onErrorCallbackGlobal) onErrorCallbackGlobal(new Error("No audio loaded to export."));
-            alert("Error: No audio loaded to export.");
-            return;
-        }
         try {
-            const pcmData = masterAudioBuffer.getChannelData(0); // Assuming mono
-            const wavBuffer = encodeWAV(pcmData, masterAudioBuffer.sampleRate, 1);
-            const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-            // Pass the Blob directly, not its URL.
-            // The downloadFile utility will handle creating a URL from the Blob for the anchor tag.
+            const pcmData = audioBuffer.getChannelData(0); 
+            const wavBufferData = encodeWAV(pcmData, audioBuffer.sampleRate, 1);
+            const blob = new Blob([wavBufferData], { type: 'audio/wav' });
             downloadFile(blob, filename); 
         } catch (e) {
             console.error("Error exporting WAV:", e);
@@ -338,20 +321,27 @@ export function getPlaybackControls(
     };
 
     const cleanup = () => {
-        stopGlobalAudio(); 
-        onEndCallbackGlobal = null;
-        onErrorCallbackGlobal = null;
-        onTimeUpdateCallbackGlobal = null;
+        // This specific instance's cleanup. If it was the one playing, stopGlobalAudio will handle it.
+        // If a new sound starts, stopGlobalAudio is called first.
+        if (currentSourceNode && currentSourceNode.buffer === audioBuffer) {
+             stopGlobalAudio(); // This will call _cleanupCurrentSource for the global node
+        }
+        // Clear instance-specific callbacks to prevent them from being called by other instances
+        if (onEndCallbackGlobal === onEnd) onEndCallbackGlobal = null;
+        if (onErrorCallbackGlobal === onError) onErrorCallbackGlobal = null;
+        if (onTimeUpdateCallbackGlobal === onTimeUpdate) onTimeUpdateCallbackGlobal = null;
     };
-
-    return { play, pause, stop, seek, setPlaybackRate, getCurrentTime, getDuration, cleanup, exportWav };
+    
+    const playbackControlsInstance = { play, pause, stop, seek, setPlaybackRate, getCurrentTime, getDuration, cleanup, exportWav };
+    return playbackControlsInstance;
 }
 
+// This function stops ANY audio that might be playing globally.
 export function stopGlobalAudio() {
-  _cleanupCurrentSource();
+  _cleanupCurrentSource(); 
   isPlayingGlobally = false;
   isPausedGlobally = false;
   globalBufferStartOffset = 0;
-  masterAudioBuffer = null; 
   _stopTimer();
+  // Do not clear global callbacks here, they are managed by specific playback instances
 }

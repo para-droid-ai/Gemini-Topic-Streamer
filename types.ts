@@ -68,7 +68,22 @@ export interface ChatMessage {
   groundingMetadata?: GroundingChunk[]; // Added for chat grounding
 }
 
+export interface Podcast {
+  id: string;
+  title: string;
+  createdAt: string; // ISO Date string
+  sourceStreamIds: string[];
+  status: 'processing' | 'complete' | 'failed';
+  audioB64Chunks?: string[]; 
+  scriptText?: string; 
+  failureReason?: string;
+  voiceName?: string; 
+  titleCardImageUrl?: string; 
+  audioDuration?: number; // Added: Duration of the podcast audio in seconds
+}
+
 export interface AppBackup {
   streams: Stream[];
   streamUpdates: { [key: string]: StreamUpdate[] };
+  podcasts?: Podcast[]; // Podcast type now includes titleCardImageUrl and audioDuration
 }

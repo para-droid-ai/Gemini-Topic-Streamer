@@ -13,22 +13,31 @@ To establish Gemini Topic Streamer as a premier tool for individuals and teams s
 *   **UI/UX Refinements:**
     *   **Enhanced Visual Feedback:** Improve loading states, empty states, and transitions for a smoother experience.
     *   **Keyboard Navigation & Accessibility:** Conduct an initial review and implement improvements for better keyboard navigation and ARIA compliance, including for TTS controls.
-    *   **Streamlined Modals:** Optimize the "Add/Edit Stream" modal for clarity and ease of use, possibly with guided steps for new users.
-    *   **Improved Error Handling:** More user-friendly error messages and notifications (e.g., toasts for non-critical issues).
-    *   **Refine TTS Controls:** Enhance the user interface for TTS playback, including clearer status indication for audio loading/playing, and ensure consistent behavior of playback controls (play/pause, seek, speed, stop).
+    *   **Streamlined Modals:**
+        *   [x] **Advanced Stream Configuration UI:** Made Top-K, Top-P, Seed settings more intuitive within the Edit Stream modal.
+        *   [x] **Reasoning Controls:** Overhauled reasoning controls in "Edit Stream" modal with a clear "Off"/"Request" selection for `reasoningMode`. UI now indicates if model support for thinking is "Recommended" (official) or "Experimental". "Thinking Token Budget" slider is conditional.
+    *   **Improved Error Handling:** More user-friendly error messages and notifications.
+    *   **Refine TTS Controls:** Enhance the UI for TTS playback, including clearer status indication.
 *   **Core Feature Enhancements:**
-    *   **Advanced Stream Configuration UI:** Make Top-K, Top-P, Seed, and Thinking Budget settings more intuitive within the Edit Stream modal.
+    *   **Model Options:**
+        *   [x] Added `gemini-2.5-pro-preview-06-05` to the list of selectable models.
     *   **Focus Prompt Assistance:**
         *   Provide examples or templates for effective focus prompts.
         *   Refine the "Optimize Focus" feature for better results.
     *   **Conditional Pinned Chat Context:** Pinned chat messages are included in the prompt for new stream updates *only if* the stream's `contextPreference` for past stream updates is 'last' or 'all'.
+    *   **Reasoning System:**
+        *   [x] Replaced `enableReasoning: boolean` with `reasoningMode: 'off' | 'request'`.
+        *   [x] API `thinkingConfig` parameter is applied if model supports it:
+            *   If `reasoningMode` is 'off', `thinkingBudget: 0` is used.
+            *   If `reasoningMode` is 'request', manual/auto budget logic applies, or model default if auto.
+        *   [x] If model doesn't support `thinkingConfig`, this API parameter is omitted, but the prompt for `<think>` tags is still included if `reasoningMode` is 'request' (experimental).
     *   **Basic Client-Side Scheduling PoC:**
-        *   Experiment with simple client-side timers for stream refresh reminders or "best-effort" auto-refresh (clearly communicating limitations).
+        *   Experiment with simple client-side timers for stream refresh reminders.
 *   **Data Management:**
     *   **Local Storage Quota Warnings:** Alert users if they are approaching browser storage limits.
-    *   **Selective Data Pruning:** Allow users to delete older updates from a stream to manage storage.
+    *   **Selective Data Pruning:** Allow users to delete older updates from a stream.
 *   **Technical Debt & Testing:**
-    *   **Unit Testing:** Implement unit tests for critical utility functions (e.g., export, API service calls, audio utilities).
+    *   **Unit Testing:** Implement unit tests for critical utility functions and core service logic, including the new reasoning configurations.
     *   **Code Documentation:** Improve inline comments and ensure component props are well-documented.
 
 ---
@@ -39,24 +48,24 @@ To establish Gemini Topic Streamer as a premier tool for individuals and teams s
 
 *   **Advanced Stream Control:**
     *   **Negative Prompts:** Allow users to specify topics or keywords to exclude from updates.
-    *   **Source Prioritization/Filtering (Concept):** Explore ways for users to indicate preferred types of sources or reliability levels (research-heavy).
-    *   **Update Comparison (Basic):** Highlight differences or new sections in an update compared to the previous one.
+    *   **Source Prioritization/Filtering (Concept):** Explore ways for users to indicate preferred types of sources.
+    *   **Update Comparison (Basic):** Highlight differences or new sections in an update.
 *   **Organization & Management:**
-    *   **Stream Tagging/Categorization:** Allow users to tag or group streams into folders for better organization, especially with many streams.
-    *   **Bulk Actions:** Enable selecting multiple streams/updates for actions like deletion, export, or settings changes.
+    *   **Stream Tagging/Categorization:** Allow users to tag or group streams into folders.
+    *   **Bulk Actions:** Enable selecting multiple streams/updates for actions.
 *   **Content Interaction & TTS:**
-    *   **Improved Markdown Export:** Ensure exported Markdown is highly compatible with other editors and includes all relevant metadata.
-    *   **Export to PDF (Client-Side):** Implement a "Print to PDF" or client-side PDF generation feature.
-    *   **Annotation/Notes (Local):** Allow users to add personal notes to specific updates within the app (stored locally).
+    *   **Improved Markdown Export:** Ensure exported Markdown is highly compatible.
+    *   **Export to PDF (Client-Side):** Implement "Print to PDF" or client-side PDF generation.
+    *   **Annotation/Notes (Local):** Allow users to add personal notes to updates.
     *   **Advanced TTS Options:**
-        *   Explore richer voice selection from a predefined list (if Gemini TTS API allows and is practical for client-side).
-        *   Client-side caching of generated TTS audio (e.g., IndexedDB) for faster subsequent playback and reduced API calls.
+        *   Explore richer voice selection.
+        *   Client-side caching of generated TTS audio.
         *   Persist user's preferred playback speed.
 *   **Visualizations:**
-    *   **Token Usage Stats:** Display estimated token usage per update and total for a stream.
-    *   **Update Frequency Chart:** Basic visualization of when updates were fetched for a stream.
+    *   **Token Usage Stats:** Display estimated token usage per update and total.
+    *   **Update Frequency Chart:** Basic visualization of update fetching.
 *   **Performance:**
-    *   **Long List Optimization:** Implement virtualization for the stream update list and sidebar if performance degrades with many items.
+    *   **Long List Optimization:** Implement virtualization for stream update list and sidebar.
 
 ---
 
@@ -65,18 +74,18 @@ To establish Gemini Topic Streamer as a premier tool for individuals and teams s
 **Goal:** Expand beyond individual use, enabling sharing and integration with other tools. (This phase likely requires a backend component).
 
 *   **Optional Cloud Sync & Backup:**
-    *   User accounts for syncing streams, updates, and TTS preferences/cached audio across devices.
-    *   Secure cloud backup and restore functionality.
+    *   User accounts for syncing streams, updates, and preferences.
+    *   Secure cloud backup and restore.
 *   **Sharing & Collaboration (Read-Only First):**
-    *   Allow users to share a read-only link to a specific stream or update (potentially with a pre-rendered audio option).
-    *   Explore concepts for collaborative stream building (multiple contributors).
+    *   Allow users to share a read-only link to a stream or update.
+    *   Explore concepts for collaborative stream building.
 *   **Expanded Export/Import:**
-    *   Integration with note-taking apps (e.g., export to Obsidian, Logseq, Notion formats).
+    *   Integration with note-taking apps.
     *   OPML export for stream lists.
 *   **Community Features (Conceptual):**
     *   A way to share and discover effective focus prompt templates.
 *   **API for Power Users (Conceptual):**
-    *   Allow programmatic interaction with streams if a backend is established.
+    *   Allow programmatic interaction if a backend is established.
 
 ---
 
@@ -85,12 +94,12 @@ To establish Gemini Topic Streamer as a premier tool for individuals and teams s
 **Goal:** Push the boundaries of intelligent information tracking.
 
 *   **AI-Powered Insights:**
-    *   Automatic sub-topic identification within streams.
-    *   Trend analysis based on stream content over time.
+    *   Automatic sub-topic identification.
+    *   Trend analysis based on stream content.
     *   AI-generated summaries *of entire streams*.
-*   **Multi-Modal Support (TTS is the first step):** If Gemini API expands significantly, explore support for summarizing or tracking topics involving images, videos, or other audio inputs.
+*   **Multi-Modal Support (TTS is the first step):** Explore support for summarizing or tracking topics involving images, videos, or other audio inputs.
 *   **Plugin Architecture:** Allow third-party developers to extend functionality.
-*   **Deeper Personalization:** AI that learns user preferences for content style, sources, and even TTS voice/style over time.
+*   **Deeper Personalization:** AI that learns user preferences.
 
 ---
 

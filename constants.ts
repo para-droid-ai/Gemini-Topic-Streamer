@@ -39,3 +39,17 @@ export const DEFAULT_THINKING_TOKEN_BUDGET = 0;
 // Audio constants
 export const TTS_DEFAULT_VOICE = "Kore"; 
 export const TTS_SAMPLE_RATE = 24000;
+
+export const AVAILABLE_TTS_VOICES = [
+  { id: "Kore", name: "Kore (Default)" }, // Assuming Kore is a valid and desired default
+  { id: "Aoede", name: "Aoede" },
+  { id: "Enceladus", name: "Enceladus" },
+  { id: "Zephyr", name: "Zephyr" },
+  { id: "Puck", name: "Puck" },
+  { id: "Leda", name: "Leda" },
+  { id: "Alnilam", name: "Alnilam" },
+  { id: "Sulafat", name: "Sulafat" },
+  { id: "Algenib", name: "Algenib" },
+] as const;
+
+export type AvailableTTSVoiceId = typeof AVAILABLE_TTS_VOICES[number]['id'];

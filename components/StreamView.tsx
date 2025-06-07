@@ -1,12 +1,12 @@
-
+// components/StreamView.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Stream, StreamUpdate, ChatMessage, StreamContextPreference, StreamDetailLevel, GroundingChunk, PinnedChatMessage } from '../types'; // Added GroundingChunk, PinnedChatMessage
+import { Stream, StreamUpdate, ChatMessage, StreamContextPreference, StreamDetailLevel, GroundingChunk, PinnedChatMessage } from '../types'; 
 import StreamUpdateCard, { formatTimeAgo } from './StreamUpdateCard';
 import { 
     RefreshIcon, LoadingSpinner, PaperAirplaneIcon, XMarkIcon, 
     PencilSquareIcon, ClipboardDocumentIcon, DocumentTextIcon, ArrowDownTrayIcon, ChevronDownIcon, TagIcon,
     SparklesIcon, BackwardIcon, ArchiveBoxIcon, ArrowUpIcon, ArrowDownIcon, ArrowSmallUpIcon, DocumentDuplicateIcon,
-    MagnifyingGlassIcon, ClipboardDocumentListIcon, PinIcon // Added PinIcon
+    MagnifyingGlassIcon, ClipboardDocumentListIcon, PinIcon 
 } from './icons';
 import { createChatSession, sendMessageInChat } from '../services/geminiService';
 import { AVAILABLE_MODELS, DEFAULT_GEMINI_MODEL_ID } from '../constants';
@@ -27,8 +27,8 @@ interface StreamViewProps {
   onUpdateDetailLevel: (streamId: string, detailLevel: StreamDetailLevel) => void; 
   onDeleteStreamUpdate: (streamId: string, updateId: string) => void;
   isSidebarCollapsed: boolean; 
-  onPinChatMessage: (streamId: string, chatMessage: ChatMessage) => void; // New prop
-  onUnpinChatMessage: (streamId: string, pinnedChatMessageId: string) => void; // New prop
+  onPinChatMessage: (streamId: string, chatMessage: ChatMessage) => void; 
+  onUnpinChatMessage: (streamId: string, pinnedChatMessageId: string) => void; 
 }
 
 const StreamView: React.FC<StreamViewProps> = ({ 
@@ -42,7 +42,7 @@ const StreamView: React.FC<StreamViewProps> = ({
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [activeChatSession, setActiveChatSession] = useState<Chat | null>(null);
-  const [chatContextContent, setChatContextContent] = useState<string | null>(null); // Stores the original update content for a deep dive
+  const [chatContextContent, setChatContextContent] = useState<string | null>(null); 
   const [chatContextTitle, setChatContextTitle] = useState<string | null>(null);
 
   const [showStreamExportMenu, setShowStreamExportMenu] = useState(false);
@@ -57,9 +57,6 @@ const StreamView: React.FC<StreamViewProps> = ({
   useEffect(() => {
     if (isChatOpen && stream) {
       if (!activeChatSession) { 
-        // This block handles the case where chat might be opened in a "general" mode
-        // without a specific deep dive. Currently, UI flow doesn't lead here directly
-        // as opening chat always starts a deep dive. Kept for potential future UI changes.
         if (stream.pinnedChatMessages && stream.pinnedChatMessages.length > 0) {
           const pinnedToDisplay: ChatMessage[] = stream.pinnedChatMessages.map(pm => ({
             id: pm.messageId, 
@@ -76,12 +73,9 @@ const StreamView: React.FC<StreamViewProps> = ({
         setChatError(null);
         setChatContextContent(null); 
       }
-      // If activeChatSession is set, chatMessages are primarily managed by 
-      // handleStartDeepDiveChat and handleSendChatMessage.
     } else if (!isChatOpen) {
-      // Reset chat state when closed
       setActiveChatSession(null);
-      setChatMessages([]); // Clear transient messages
+      setChatMessages([]); 
       setChatContextContent(null);
       setChatContextTitle(null);
       setChatInput('');
@@ -143,9 +137,8 @@ const StreamView: React.FC<StreamViewProps> = ({
   };
 
   const handleStartDeepDiveChat = (updateContent: string, updateTimestamp: string) => {
-    if (!apiKeyAvailable || !stream) { // Added !stream check for safety
+    if (!apiKeyAvailable || !stream) { 
         setChatError("Gemini API Key is not configured or stream is not available. Chat functionality is disabled.");
-        // Potentially open chat to show the error, but no session will be active
         setIsChatOpen(true); 
         setActiveChatSession(null);
         setChatMessages([]);
@@ -162,19 +155,16 @@ const StreamView: React.FC<StreamViewProps> = ({
       setActiveChatSession(session);
       
       let initialMessages: ChatMessage[] = [];
-      // Prepend pinned messages if they exist for the current stream
       if (stream.pinnedChatMessages && stream.pinnedChatMessages.length > 0) {
         const pinnedToDisplay: ChatMessage[] = stream.pinnedChatMessages.map(pm => ({
-          id: pm.messageId, // Use original message ID for keying and potential unpin actions
+          id: pm.messageId, 
           role: pm.role,
           text: pm.text,
           timestamp: pm.originalTimestamp,
-          // Grounding metadata is not stored with PinnedChatMessage objects
         }));
         initialMessages = [...pinnedToDisplay];
       }
 
-      // Add the model's standard acknowledgement for the deep dive context
       initialMessages.push({
         id: crypto.randomUUID(),
         role: 'model',
@@ -194,7 +184,6 @@ const StreamView: React.FC<StreamViewProps> = ({
 
   const handleCloseChat = () => {
     setIsChatOpen(false);
-    // State reset is handled by the useEffect watching isChatOpen
   };
 
   const handleSendChatMessage = async () => {
@@ -340,7 +329,6 @@ const StreamView: React.FC<StreamViewProps> = ({
     if (!stream) return null;
     const modelConfig = AVAILABLE_MODELS.find(m => m.id === (stream.modelName || DEFAULT_GEMINI_MODEL_ID));
     
-    // Only show budget text if reasoningMode is 'request' and model supports thinkingConfig
     if (stream.reasoningMode !== 'request' || !modelConfig?.supportsThinkingConfig) {
         return null;
     }
@@ -357,7 +345,6 @@ const StreamView: React.FC<StreamViewProps> = ({
     return null; 
   };
   const thinkingBudgetText = getThinkingBudgetText();
-
 
   if (!apiKeyAvailable && !stream) {
     return (
@@ -648,7 +635,7 @@ const StreamView: React.FC<StreamViewProps> = ({
         <div 
             className={`fixed bottom-0 right-0 mb-4 mr-4 md:mr-6 lg:mr-8 z-30 bg-gray-800 rounded-lg shadow-2xl border border-gray-700 flex flex-col
                        max-h-[70vh] h-3/5 w-11/12 sm:w-4/5 ${chatPopupWidthClass} 
-                       min-h-[250px] 
+                       min-h-[250px] max-w-3xl
                       `}
             role="dialog" 
             aria-modal="true" 
@@ -668,7 +655,6 @@ const StreamView: React.FC<StreamViewProps> = ({
                 <strong>Error:</strong> {chatError}
               </div>
             )}
-            {/* Initial placeholder if chatMessages is empty and no error */}
             {(chatMessages.length === 0 && !chatError && !activeChatSession && (!stream?.pinnedChatMessages || stream.pinnedChatMessages.length === 0)) && (
                  <div className="text-center text-gray-400 text-sm p-4">
                     {apiKeyAvailable ? "Select an update to start a deep dive chat, or pin messages to see them here." : "API Key not configured. Chat functionality is disabled."}
@@ -702,7 +688,6 @@ const StreamView: React.FC<StreamViewProps> = ({
             })}
             <div ref={chatMessagesEndRef} />
           </div>
-          {/* Show input only if API key is available AND (an active session exists OR it's a general chat for a stream) */}
           {apiKeyAvailable && stream && (
             <div className="p-3 border-t border-gray-700 flex-shrink-0">
               <div className="flex items-center space-x-2">

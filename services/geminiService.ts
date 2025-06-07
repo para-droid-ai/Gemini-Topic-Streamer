@@ -107,7 +107,6 @@ export const fetchStreamUpdates = async (stream: Stream, previousContext?: Previ
       break;
   }
 
-  // Always add the reasoning prompt if the mode is 'request'
   if (stream.reasoningMode === 'request') {
     detailInstruction += `\nIMPORTANT: Utilize <think>...</think> XML-like tags extensively to expose your reasoning process. This could include your plan, information gathering strategy, key points to cover, and how you decide to structure the response. This thinking process should precede the main content for a given section or thought.`;
   }
@@ -115,7 +114,7 @@ export const fetchStreamUpdates = async (stream: Stream, previousContext?: Previ
   let contextPreamble = "";
   let contextInstruction = "";
 
-  if (previousContext) { // This implies stream.contextPreference is 'last' or 'all'
+  if (previousContext) { 
     let contextText = "";
     switch (previousContext.type) {
       case 'last':
@@ -151,7 +150,6 @@ Your primary goal now is to build upon the PREVIOUS STREAM UPDATE CONTEXT provid
   }
 
   let pinnedMessagesPreamble = "";
-  // Pinned messages are only included if stream.contextPreference is 'last' or 'all'
   if ( (stream.contextPreference === 'last' || stream.contextPreference === 'all') && 
        stream.pinnedChatMessages && stream.pinnedChatMessages.length > 0
      ) {
@@ -223,10 +221,9 @@ If reasoning is requested via instructions to use <think> tags, ensure these tag
         }
       }
     }
-    // For models that don't support thinkingConfig, it's omitted.
 
     const response: GenerateContentResponse = await localAi.models.generateContent({
-      model: modelToUse, // Use the selected model for the stream
+      model: modelToUse, 
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: apiCallConfig,
     });
@@ -305,7 +302,7 @@ export const createChatSession = (initialContext: string): Chat | null => {
       history: history,
       config: {
         systemInstruction: "You are an intelligent assistant. Your primary goal is to help the user explore and understand the provided context in more detail. Answer questions based on the context. If the context doesn't provide an answer, say so. Use Google Search grounding to provide current and relevant information for your answers.",
-        tools: [{ googleSearch: {} }] // Enable Google Search for chat
+        tools: [{ googleSearch: {} }] 
       }
     });
     return chat;
@@ -380,7 +377,7 @@ Return ONLY the revised "Focus Prompt" text. Do not include any other explanator
 
   try {
     const response: GenerateContentResponse = await localAi.models.generateContent({
-      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, // Prompt optimization uses default model
+      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, 
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         temperature: 0.5, 
@@ -409,70 +406,149 @@ const getApiKeyForTTS = (): string | null => {
   return userProvidedApiKey || (typeof process !== 'undefined' && process.env && process.env.API_KEY) || null;
 }
 
-export const generateSpeechFromText = async (textToSpeak: string, voiceName: string = TTS_DEFAULT_VOICE): Promise<string> => {
+const TTS_CHUNK_SIZE = 4500; 
+
+const chunkText = (text: string): string[] => {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  for (const sentence of sentences) {
+    if (currentChunk.length + sentence.length > TTS_CHUNK_SIZE) {
+      chunks.push(currentChunk);
+      currentChunk = sentence;
+    } else {
+      currentChunk += " " + sentence;
+    }
+  }
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+  return chunks.map(c => c.trim()).filter(c => c.length > 0);
+};
+
+
+export const generateSpeechFromText = async (
+  textToSpeak: string,
+  voiceName: string = TTS_DEFAULT_VOICE,
+  onProgress: (progress: { loaded: number, total: number }) => void
+): Promise<string[]> => { 
+  
   const apiKey = getApiKeyForTTS();
   if (!apiKey) {
     throw new Error("Gemini API Key is not configured. Cannot generate speech.");
   }
 
-  const requestBody = {
-    contents: [{
-      parts: [{
-        text: textToSpeak
-      }]
-    }],
-    generationConfig: {
-      responseModalities: ["AUDIO"],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: {
-            voiceName: voiceName
-          }
-        }
-      }
-    },
-    model: GEMINI_TTS_MODEL_NAME, 
-  };
+  const textChunks = chunkText(textToSpeak);
+  const totalChunks = textChunks.length;
+  let loadedChunks = 0;
 
-  const startTime = performance.now();
-  try {
-    const response = await fetch(`${GEMINI_TTS_API_ENDPOINT}?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+  console.log(`Text split into ${totalChunks} chunks for TTS processing.`);
+  onProgress({ loaded: loadedChunks, total: totalChunks });
+
+  if (totalChunks === 0) {
+      return [];
+  }
+
+  const chunkPromises = textChunks.map(async (chunk, index) => {
+    const requestBody = {
+      contents: [{ parts: [{ text: chunk }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
       },
-      body: JSON.stringify(requestBody),
-    });
+      model: GEMINI_TTS_MODEL_NAME,
+    };
 
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ error: { message: "Unknown API error structure" } }));
-      console.error("Gemini TTS API Error Response:", errorBody);
-      throw new Error(`Gemini TTS API request failed with status ${response.status}: ${errorBody.error?.message || response.statusText}`);
-    }
+    try {
+      const response = await fetch(`${GEMINI_TTS_API_ENDPOINT}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
 
-    const data = await response.json();
-    
-    const endTime = performance.now();
-    const duration = endTime - startTime;
-    console.log(`Gemini TTS request for "${textToSpeak.substring(0, 30)}..." took: ${duration.toFixed(2)}ms`);
-    
-    if (data.candidates && data.candidates.length > 0 &&
-        data.candidates[0].content && data.candidates[0].content.parts &&
-        data.candidates[0].content.parts.length > 0 &&
-        data.candidates[0].content.parts[0].inlineData &&
-        data.candidates[0].content.parts[0].inlineData.data) {
-      return data.candidates[0].content.parts[0].inlineData.data;
-    } else {
-      console.error("Invalid response structure from Gemini TTS API:", data);
-      throw new Error("Invalid response structure from Gemini TTS API. No audio data found.");
-    }
-  } catch (error) {
-    const endTime = performance.now();
-    const duration = endTime - startTime;
-    console.error(`Gemini TTS request for "${textToSpeak.substring(0,30)}..." failed after ${duration.toFixed(2)}ms. Error:`, error);
-    if (error instanceof Error) {
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ error: { message: `Chunk ${index + 1} failed with status ${response.status}` } }));
+        throw new Error(`Gemini TTS API request for chunk ${index + 1} failed: ${errorBody.error?.message || response.statusText}`);
+      }
+      
+      const data = await response.json();
+      loadedChunks++;
+      onProgress({ loaded: loadedChunks, total: totalChunks });
+
+      if (data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
+        return data.candidates[0].content.parts[0].inlineData.data;
+      } else {
+        throw new Error(`Invalid response structure for chunk ${index + 1}.`);
+      }
+    } catch (error) {
+      console.error(`Error processing chunk ${index + 1}:`, error);
       throw error;
     }
-    throw new Error("An unknown error occurred while generating speech.");
+  });
+
+  return Promise.all(chunkPromises);
+};
+
+export const generatePodcastScript = async (rawContent: string, title: string): Promise<string> => {
+  const localAi = getAiClient();
+  const prompt = `You are an expert podcast scriptwriter. You will be given a collection of raw text from different topic streams, demarcated by [START STREAM: "STREAM NAME"] and [END STREAM: "STREAM NAME"].
+
+Your task is to transform this raw text into a single, cohesive podcast script with the title "${title}".
+
+The script must include:
+1.  A brief, engaging introduction that previews the topics to be discussed.
+2.  Smooth, conversational transitions between each topic stream. For example, "Now, turning our attention to..." or "In other news...".
+3.  The core content from the provided text, edited for flow and clarity as if it were being read aloud. Summarize where necessary to maintain a good pace.
+4.  A brief concluding summary that wraps up the report.
+
+The output should be ONLY the final, clean script text, ready for text-to-speech narration. Do not include any extra commentary, markdown formatting, or labels like "Introduction:".
+
+Here is the raw content:
+---
+${rawContent}
+---
+`;
+
+  try {
+    const response = await localAi.models.generateContent({
+      model: GEMINI_MODEL_NAME_FOR_CHAT_AND_OPTIMIZE, 
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { temperature: 0.6 }, 
+    });
+    return response.text.trim();
+  } catch (error) {
+    console.error("Error generating podcast script:", error);
+    if (error instanceof Error) {
+        throw new Error(`Gemini API error during podcast script generation: ${error.message}`);
+    }
+    throw new Error("Failed to generate podcast script from Gemini.");
+  }
+};
+
+export const generatePodcastTitleCardImage = async (podcastTitle: string, scriptContent: string): Promise<string | null> => {
+  const localAi = getAiClient();
+  // Take a short excerpt of the script for thematic context, remove newlines for better prompt flow.
+  const scriptExcerpt = scriptContent.substring(0, 300).replace(/\n/g, " "); 
+
+  const prompt = `Create a visually striking title card image for a podcast episode. The podcast title is "${podcastTitle}". The episode content is about: "${scriptExcerpt}". The image should be artistic and representative of the themes. If possible, incorporate the podcast title text "${podcastTitle}" cleanly and legibly into the image design. Modern, clean, and engaging style. Minimal or no other text beyond the podcast title.`;
+
+  try {
+    const response = await localAi.models.generateImages({
+      model: 'imagen-3.0-generate-002',
+      prompt: prompt,
+      config: { numberOfImages: 1, outputMimeType: 'image/jpeg' },
+    });
+
+    if (response.generatedImages && response.generatedImages.length > 0 && response.generatedImages[0].image?.imageBytes) {
+      const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+      return `data:image/jpeg;base64,${base64ImageBytes}`;
+    }
+    console.warn("No image generated or image data missing from Imagen 3 response for podcast title card.");
+    return null;
+  } catch (error) {
+    console.error("Error generating podcast title card image with Imagen 3:", error);
+    // Do not throw, allow podcast generation to continue without an image
+    return null;
   }
 };
