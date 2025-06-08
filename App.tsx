@@ -603,13 +603,16 @@ const App: React.FC = () => {
   const handleGeneratePodcast = async (title: string, sourceStreamIds: string[], updatesPerStreamCount: number, voiceName: AvailableTTSVoiceId) => {
     setCreatePodcastModalOpen(false); 
     
-    if (!apiKeyAvailable) {
-        alert("API Key is not configured. Cannot generate podcast audio.");
-        setPodcasts(prev => prev.map(p => 
-            (p.status === 'processing' && p.title === title && JSON.stringify(p.sourceStreamIds.sort()) === JSON.stringify(sourceStreamIds.sort())) 
-            ? {...p, status: 'failed', failureReason: "API Key not configured", voiceName} 
-            : p
-        ));
+    if (!apiKeyAvailable && (!process.env.API_KEY && !localStorage.getItem(USER_API_KEY_STORAGE_KEY))) { // Check effective key
+        alert("API Key is not configured. Cannot generate podcast script, image, or audio.");
+        // Mark as failed locally without attempting API calls
+        const tempPodcastIdFail = crypto.randomUUID();
+        const placeholderPodcastFail: Podcast = {
+            id: tempPodcastIdFail, title, createdAt: new Date().toISOString(), sourceStreamIds, 
+            status: 'failed', failureReason: "API Key not configured", voiceName
+        };
+        setPodcasts(prev => [placeholderPodcastFail, ...prev].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        await savePodcast(placeholderPodcastFail);
         return;
     }
 
@@ -642,22 +645,38 @@ const App: React.FC = () => {
     let podcastStage: Podcast = placeholderPodcast;
 
     try {
+        // --- 1. Generate Script ---
         console.log("Generating podcast script for:", title);
         script = await generatePodcastScript(rawContent, title);
-        podcastStage = { ...placeholderPodcast, scriptText: script };
+        podcastStage = { ...podcastStage, scriptText: script };
         setPodcasts(prev => prev.map(p => p.id === tempPodcastId ? podcastStage : p));
-
-        if (apiKeyAvailable) {
-            console.log("Generating title card image for:", title);
-            titleCardImageUrl = await generatePodcastTitleCardImage(title, script);
-            if (titleCardImageUrl) console.log("Title card image generated for:", title);
-            else console.warn("Failed to generate title card image for:", title);
-        }
-        podcastStage = { ...podcastStage, titleCardImageUrl: titleCardImageUrl || undefined };
-        
         await savePodcast(podcastStage); 
-        setPodcasts(prev => prev.map(p => p.id === tempPodcastId ? podcastStage : p));
+
+        // --- 2. Generate Title Card Image (conditionally, allow failure) ---
+        if (apiKeyAvailable || process.env.API_KEY) { // Check effective key for image gen
+            try {
+                console.log("Attempting to generate title card image for:", title);
+                const generatedImage = await generatePodcastTitleCardImage(title, script);
+                if (generatedImage) {
+                    titleCardImageUrl = generatedImage;
+                    console.log("Title card image successfully generated for:", title);
+                } else {
+                    console.warn(`Title card image generation for podcast "${title}" did not return an image (e.g., API issue, quota, or no image data). Proceeding without title card.`);
+                }
+            } catch (imageGenError) {
+                console.warn(`An unexpected error occurred during title card image generation for podcast "${title}". Proceeding without title card. Error:`, imageGenError);
+            }
+            podcastStage = { ...podcastStage, titleCardImageUrl: titleCardImageUrl || undefined };
+            setPodcasts(prev => prev.map(p => p.id === tempPodcastId ? podcastStage : p));
+            await savePodcast(podcastStage);
+        } else {
+            console.log("API key not available for image generation, skipping title card image for podcast:", title);
+        }
         
+        // --- 3. Generate Speech (requires effective API key) ---
+         if (!apiKeyAvailable && !process.env.API_KEY && !localStorage.getItem(USER_API_KEY_STORAGE_KEY)) {
+            throw new Error("API Key not configured. Cannot generate podcast audio.");
+        }
         console.log("Podcast audio generation started for:", title);
         const audioB64Chunks = await generateSpeechFromText(script, voiceName || TTS_DEFAULT_VOICE, (progress) => {
             console.log(`TTS Progress for podcast ${title}: ${progress.loaded}/${progress.total}`);
@@ -667,26 +686,28 @@ const App: React.FC = () => {
             throw new Error("Generated audio was empty after TTS process for podcast.");
         }
         
-        // Calculate duration from stitched PCM data
         const decodedChunks = audioB64Chunks.map(chunk => base64ToFloat32Array(chunk));
         const totalLength = decodedChunks.reduce((sum, arr) => sum + arr.length, 0);
         if (totalLength > 0) {
             audioDuration = totalLength / TTS_SAMPLE_RATE;
         }
 
-        const finalPodcast: Podcast = { ...podcastStage, status: 'complete' as const, audioB64Chunks, audioDuration };
+        // --- 4. Finalize Podcast ---
+        const finalPodcast: Podcast = { 
+            ...podcastStage, 
+            status: 'complete' as const, 
+            audioB64Chunks, 
+            audioDuration 
+        };
         setPodcasts(prev => prev.map(p => p.id === tempPodcastId ? finalPodcast : p));
         await savePodcast(finalPodcast);
         console.log("Podcast generation complete for:", title);
   
     } catch (error) {
-      console.error("Podcast generation failed for:", title, error);
+      console.error("Podcast generation failed critically for:", title, error);
       const failureReason = error instanceof Error ? error.message : "An unknown error occurred during podcast generation.";
       const failedPodcastUpdate: Podcast = { 
-        ...placeholderPodcast, 
-        scriptText: script || undefined, 
-        titleCardImageUrl: titleCardImageUrl || undefined, 
-        audioDuration: audioDuration, // Include duration if calculated before failure
+        ...podcastStage, 
         status: 'failed' as const, 
         failureReason 
       };
