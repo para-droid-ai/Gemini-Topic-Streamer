@@ -324,25 +324,24 @@ const StreamUpdateCard: React.FC<StreamUpdateCardProps> = ({ id, update, streamN
     return (
       <div className="mt-3 pt-3 border-t border-gray-700">
         <h4 className="text-sm font-semibold text-gray-300 mb-1.5">Sources:</h4>
-        <ul className="list-disc list-inside space-y-1">
+        <div className="flex flex-wrap gap-2 mt-1">
           {validSources.map((chunk, index) => {
              const sourceInfo = chunk.web || chunk.retrievedContext;
              if (!sourceInfo || !sourceInfo.uri || sourceInfo.uri === '#') return null;
              return (
-                <li key={`${update.id}-grounding-${index}`} className="text-xs">
-                  <a 
-                    href={sourceInfo.uri} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-blue-400 hover:text-blue-300 hover:underline truncate block" 
-                    title={sourceInfo.title || sourceInfo.uri}
-                  >
-                    {sourceInfo.title || sourceInfo.uri}
-                  </a>
-                </li>
+                <a 
+                  key={`${update.id}-grounding-${index}`}
+                  href={sourceInfo.uri} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-xs bg-gray-700 hover:bg-gray-600 text-blue-400 hover:text-blue-300 px-2 py-0.5 rounded-full no-underline truncate block max-w-xs sm:max-w-sm md:max-w-md"
+                  title={sourceInfo.title || sourceInfo.uri}
+                >
+                  {sourceInfo.title || new URL(sourceInfo.uri).hostname}
+                </a>
              );
           })}
-        </ul>
+        </div>
       </div>
     );
   };

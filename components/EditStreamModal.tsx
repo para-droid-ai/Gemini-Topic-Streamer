@@ -119,7 +119,7 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
     setIsOptimizingFocus(true);
     setOptimizingFocusError(null);
     try {
-      const optimizedFocus = await optimizePromptForStream(name.trim(), focus);
+      const optimizedFocus = await optimizePromptForStream(name.trim(), focus, detailLevel);
       setFocus(optimizedFocus);
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unknown error occurred.";
@@ -147,11 +147,25 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
             <input type="text" id="modalStreamName" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-100" required disabled={isOptimizingFocus} />
           </div>
           <div>
+            <label htmlFor="modalStreamDetailLevel" className="block text-sm font-medium text-gray-300">Detail Level (influences Focus Optimization)</label>
+            <select 
+              id="modalStreamDetailLevel" 
+              value={detailLevel} 
+              onChange={(e) => setDetailLevel(e.target.value as StreamDetailLevel)} 
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-100"
+              disabled={isOptimizingFocus}
+            >
+              <option value="brief">Brief (~1,024 words)</option>
+              <option value="comprehensive">Comprehensive (~5,000 words)</option>
+              <option value="research">Research (~10,000 words)</option>
+            </select>
+          </div>
+          <div>
             <label htmlFor="modalStreamFocus" className="block text-sm font-medium text-gray-300">Focus/Prompt Details</label>
             <textarea id="modalStreamFocus" value={focus} onChange={(e) => setFocus(e.target.value)} rows={6} className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-100" required disabled={isOptimizingFocus} placeholder="Describe the core topic..." />
             <button type="button" onClick={handleOptimizeFocus} disabled={!apiKeyAvailable || isOptimizingFocus || !name.trim() || !focus.trim()} className="mt-2 flex items-center justify-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-500">
               {isOptimizingFocus ? <LoadingSpinner className="w-4 h-4 mr-2" /> : <SparklesIcon className="w-4 h-4 mr-1.5" />}
-              {isOptimizingFocus ? 'Optimizing...' : 'Optimize Focus'}
+              {isOptimizingFocus ? 'Optimizing...' : `Optimize for '${detailLevel}'`}
             </button>            
             {optimizingFocusError && <p className="mt-1.5 text-xs text-red-400">{optimizingFocusError}</p>}
           </div>
@@ -249,20 +263,6 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
                 </p>
               </div>
             )}
-          </div>
-
-          <div>
-            <label htmlFor="modalStreamDetailLevel" className="block text-sm font-medium text-gray-300">Detail Level</label>
-            <select 
-              id="modalStreamDetailLevel" 
-              value={detailLevel} 
-              onChange={(e) => setDetailLevel(e.target.value as StreamDetailLevel)} 
-              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-100"
-            >
-              <option value="brief">Brief (~1,024 words)</option>
-              <option value="comprehensive">Comprehensive (~5,000 words)</option>
-              <option value="research">Research (~10,000 words)</option>
-            </select>
           </div>
           <div>
             <label htmlFor="modalContextPreference" className="block text-sm font-medium text-gray-300">Context for New Updates</label>

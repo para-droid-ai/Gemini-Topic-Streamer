@@ -1,4 +1,5 @@
 
+// services/geminiService.ts
 
 import { GoogleGenAI, GenerateContentResponse, GroundingChunk as GenAIGroundingChunk, Chat, Content } from "@google/genai";
 import { 
@@ -9,7 +10,7 @@ import {
     DEFAULT_GEMINI_MODEL_ID,
     AVAILABLE_MODELS
 } from '../constants';
-import { GroundingChunk, Stream, StreamUpdate, PinnedChatMessage } from '../types'; 
+import { GroundingChunk, Stream, StreamUpdate, PinnedChatMessage, StreamDetailLevel } from '../types'; 
 
 let ai: GoogleGenAI | null = null;
 let activeInitializedKey: string | null = null; 
@@ -349,29 +350,72 @@ export const sendMessageInChat = async (chat: Chat, message: string): Promise<Se
   }
 };
 
-export const optimizePromptForStream = async (streamName: string, currentFocus: string): Promise<string> => {
+export const optimizePromptForStream = async (streamName: string, currentFocus: string, detailLevel: StreamDetailLevel): Promise<string> => {
   const localAi = getAiClient();
   
+  let taskInstruction = "";
+  switch (detailLevel) {
+    case 'brief':
+      taskInstruction = `
+Your task is to refine the "Focus Prompt" to be more effective for generating **concise yet deep and nuanced updates**.
+The goal is to capture key developments and essential details succinctly.
+The output should be suitable for a quick, informative overview.
+Consider techniques such as:
+- Explicitly asking for the most critical information (e.g., "latest key findings, primary expert reactions, most significant emerging trends, direct impacts").
+- Suggesting a very structured and brief output format if it enhances clarity (e.g., "a few bullet points per key area").
+- Focusing on clarity and eliminating redundancy.
+- Ensuring the prompt encourages depth on core aspects but conciseness in presentation.`;
+      break;
+    case 'comprehensive':
+      taskInstruction = `
+Your task is to refine the "Focus Prompt" to be more effective for generating **comprehensive and nuanced updates**.
+The goal is to help the user receive in-depth updates, capturing both major developments and subtle details related to the stream's topic.
+Consider techniques such as:
+- Explicitly asking for different types of information (e.g., "latest news, expert opinions, emerging trends, potential impacts, detailed explanations of specific sub-topics like X and Y").
+- Suggesting a structure for the desired output if it significantly enhances clarity for this specific focus.
+- Clarifying ambiguities or overly broad statements.
+- Broadening or narrowing the scope appropriately based on the stream name and original focus to ensure comprehensive coverage without losing specificity.
+- Ensuring the prompt encourages depth, nuance, and the inclusion of diverse perspectives where applicable.
+- Phrasing that helps the model understand the desired level of detail and complexity.`;
+      break;
+    case 'research':
+      taskInstruction = `
+Your task is to transform the "Current Focus Prompt" into a **highly detailed research directive**.
+The goal is to guide a large language model to produce an in-depth research report, potentially incorporating extensive search, planning, and structured formatting.
+The refined prompt should be very specific and demanding.
+Consider instructing the model (within the refined prompt you generate) to:
+- **Perform thorough information gathering:** Explicitly mention seeking diverse sources, data, academic papers, expert analyses, and recent news.
+- **Outline a research plan:** Suggest that the model (when it later uses this optimized prompt) should first plan its response structure, identify key research questions derived from the focus, and strategize how it will cover them.
+- **Adopt a formal, analytical tone.**
+- **Structure the output like a research paper or in-depth briefing:** This might include sections like "Introduction/Scope", "Methodology/Information Sources", "Key Findings", "Detailed Analysis of Sub-Topics (e.g., X, Y, Z)", "Data & Evidence", "Counterarguments/Limitations", "Future Outlook/Implications", and "Conclusion".
+- **IMPORTANT for the prompt you generate:** Include a placeholder like "[Current Date: YYYY-MM-DD HH:MM UTC]" or an instruction like "Incorporate the current date and time (e.g., 'As of [Current Date/Time], the situation is...') to contextualize its search and findings." Ensure this placeholder is part of the *outputted optimized prompt*.
+- **Demand significant depth and comprehensiveness.**`;
+      break;
+    default:
+      taskInstruction = `
+Your task is to refine the "Focus Prompt" to be more effective for generating **comprehensive and nuanced updates**.
+The goal is to help the user receive in-depth updates, capturing both major developments and subtle details related to the stream's topic.
+Consider techniques such as:
+- Explicitly asking for different types of information (e.g., "latest news, expert opinions, emerging trends, potential impacts, detailed explanations of specific sub-topics like X and Y").
+- Suggesting a structure for the desired output if it significantly enhances clarity for this specific focus.
+- Clarifying ambiguities or overly broad statements.
+- Broadening or narrowing the scope appropriately based on the stream name and original focus to ensure comprehensive coverage without losing specificity.
+- Ensuring the prompt encourages depth, nuance, and the inclusion of diverse perspectives where applicable.
+- Phrasing that helps the model understand the desired level of detail and complexity.`;
+      break;
+  }
+
   const prompt = `
 You are an expert prompt engineer.
 The user has a "Topic Stream" with a name and a "Focus Prompt" that will be used to generate regular updates using a large language model.
-Your task is to refine the "Focus Prompt" to be more effective.
-The goal is to help the user receive comprehensive and nuanced updates, capturing both major developments and subtle details related to the stream's topic.
+The user has also selected a desired "Detail Level" for the stream's output: "${detailLevel}".
 
 Stream Name: "${streamName}"
 Current Focus Prompt: """
 ${currentFocus}
 """
 
-Analyze the Stream Name and the Current Focus Prompt.
-Rewrite and improve the "Focus Prompt" to be clearer, more specific, and better structured for querying a large language model like Gemini.
-Consider incorporating techniques such as:
-- Explicitly asking for different types of information (e.g., "latest news, expert opinions, emerging trends, potential impacts, detailed explanations of specific sub-topics like X and Y").
-- Suggesting a structure for the desired output only if it significantly enhances clarity for this specific focus.
-- Clarifying ambiguities or overly broad statements.
-- Broadening or narrowing the scope appropriately based on the stream name and original focus to ensure comprehensive coverage without losing specificity.
-- Ensuring the prompt encourages depth, nuance, and the inclusion of diverse perspectives where applicable.
-- Phrasing that helps the model understand the desired level of detail and complexity.
+${taskInstruction}
 
 Return ONLY the revised "Focus Prompt" text. Do not include any other explanatory text, preamble, or markdown formatting (like \`\`\`json or \`\`\`text) around the prompt itself. The output should be ready to be directly used as the new focus prompt.
   `;
@@ -530,26 +574,83 @@ ${rawContent}
 export const generatePodcastTitleCardImage = async (podcastTitle: string, scriptContent: string): Promise<string | null> => {
   const localAi = getAiClient();
   const scriptExcerpt = scriptContent.substring(0, 350).replace(/\n/g, " "); 
+  const primaryModel = 'imagen-3.0-generate-002';
+  const fallbackModel = 'gemini-2.0-flash-preview-image-generation';
 
-  const prompt = `Generate a purely visual artwork for a podcast title card. This image must NOT contain any text, letters, words, numbers, or written symbols of any kind.
-The visual theme, subject matter, and mood of the image should be directly inspired by the following podcast script excerpt: "${scriptExcerpt}".
-Create an artistic, modern, and engaging image that captures the essence of this content. Avoid generic representations; focus on unique visual elements suggested by the script. For example, if the script mentions 'lunar missions' and 'technology', the image could feature a stylized moon and abstract technological patterns, not just a plain photo of the moon. If it mentions 'economic uncertainty' and 'global trade', it could be an abstract representation of interconnected but fluctuating elements. The image should be suitable as a visually striking, text-free thumbnail.`;
+  const imagePrompt = `**ABSOLUTE DIRECTIVE: THE IMAGE MUST BE COMPLETELY DEVOID OF ANY TEXT, LETTERS, WORDS, NUMBERS, CHARACTERS, OR WRITTEN SYMBOLS. THIS INCLUDES TEXT WITHIN LOGOS, ON CLOTHING, ON EQUIPMENT, OR IN THE BACKGROUND. PURELY VISUAL AND SYMBOLIC. NO TEXT WHATSOEVER.**
+
+You are an AI artist creating a highly artistic, modern, and engaging visual for a podcast title card.
+Podcast Title: "${podcastTitle}"
+Podcast Script Excerpt (for thematic inspiration): "${scriptExcerpt}"
+
+Your task is to generate a **symbolic or abstract visual representation** of the core subject matter hinted at by the podcast title and inspired by the script excerpt.
+
+**Key Visual Requirements:**
+1.  **Core Subject Essence:** The image MUST capture the *essence and dynamic feel* of the podcast's main subject.
+    *   For example, if the title is 'NHL Daily' or mentions hockey, the image should evoke the essence of ice hockey – speed, the puck, skates, ice patterns, abstract player forms, dynamic motion, cool color palettes.
+2.  **NO LITERAL TEXT OR LOGOS:**
+    *   **Crucial for sports (e.g., hockey):** AVOID depicting jerseys with team names or numbers, player names, or equipment branding (like on sticks, skates, or helmets). DO NOT show official league logos (e.g., "NHL" shield) or text on rink boards, scoreboards, or as part of the ice markings.
+    *   **General Rule:** For any topic, avoid any text that would typically appear in a literal or photorealistic representation of the subject. The goal is a visual interpretation, not a depiction of branded items.
+3.  **Artistic Interpretation Focus:**
+    *   **Abstract:** Use shapes, colors, and textures to evoke the mood and theme.
+    *   **Symbolic:** Use recognizable symbols of the subject (e.g., a puck, a stick, a net for hockey, but rendered artistically and completely free of any text or branding) in a creative, non-literal composition.
+    *   **Stylized Illustration:** A non-photorealistic illustration that focuses on action or mood without including textual details or specific branding.
+4.  **Visual Elements from Script:** Use the script excerpt to inspire colors, mood, or specific actions/elements to incorporate *artistically* into the image, while strictly adhering to the "NO TEXT" and "NO LOGOS" rule. For instance, if a hockey script mentions a "fast break," the image could show dynamic lines and a sense of motion related to hockey, without showing actual players with jersey text.
+5.  **Professional Aesthetic:** The image should be modern, high-quality, and visually engaging as a podcast thumbnail.
+
+**Reiteration of Critical Constraint: Zero text, zero letters, zero numbers, zero written symbols. This is the most important rule. The image must be purely visual artwork.**
+
+Generate an image based on these strict instructions.`;
+
+  const imageConfig = { numberOfImages: 1, outputMimeType: 'image/jpeg' };
 
   try {
+    console.log(`Attempting title card image generation with primary model: ${primaryModel}`);
     const response = await localAi.models.generateImages({
-      model: 'imagen-3.0-generate-002',
-      prompt: prompt,
-      config: { numberOfImages: 1, outputMimeType: 'image/jpeg' },
+      model: primaryModel,
+      prompt: imagePrompt,
+      config: imageConfig,
     });
 
     if (response.generatedImages && response.generatedImages.length > 0 && response.generatedImages[0].image?.imageBytes) {
       const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+      console.log(`Primary image generation successful with ${primaryModel}.`);
       return `data:image/jpeg;base64,${base64ImageBytes}`;
     }
-    console.warn("No image generated or image data missing from Imagen 3 response for podcast title card. Prompt used:", prompt);
+    console.warn(`No image generated or image data missing from ${primaryModel} response. Prompt used:`, imagePrompt);
+    // If primary model "succeeds" but returns no image, don't fallback yet, could be prompt issue.
+    // Fallback is primarily for quota errors.
     return null;
-  } catch (error) {
-    console.error("Error generating podcast title card image with Imagen 3. Prompt used:", prompt, "Error:", error);
-    return null;
+  } catch (primaryError: any) {
+    const primaryErrorMessageString = primaryError instanceof Error ? primaryError.message : String(primaryError);
+
+    if (primaryErrorMessageString.includes("RESOURCE_EXHAUSTED") || primaryErrorMessageString.includes("429")) {
+      console.warn(`Primary model ${primaryModel} quota exceeded. Attempting fallback with ${fallbackModel}. Prompt:`, imagePrompt, "Primary Error Details:", primaryErrorMessageString);
+
+      try {
+        console.log(`Attempting title card image generation with fallback model: ${fallbackModel}`);
+        const fallbackResponse = await localAi.models.generateImages({
+          model: fallbackModel,
+          prompt: imagePrompt,
+          config: imageConfig,
+        });
+
+        if (fallbackResponse.generatedImages && fallbackResponse.generatedImages.length > 0 && fallbackResponse.generatedImages[0].image?.imageBytes) {
+          const base64ImageBytes = fallbackResponse.generatedImages[0].image.imageBytes;
+          console.log(`Fallback image generation successful with ${fallbackModel}.`);
+          return `data:image/jpeg;base64,${base64ImageBytes}`;
+        }
+        console.warn(`Fallback model ${fallbackModel} also failed to generate image or returned no image data. Prompt used:`, imagePrompt);
+        return null;
+      } catch (fallbackError: any) {
+        const fallbackErrorMessageString = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        console.error(`Fallback model ${fallbackModel} failed. Prompt used:`, imagePrompt, "Fallback Error Details:", fallbackErrorMessageString);
+        return null;
+      }
+    } else {
+      // Error with primary model was not a quota issue
+      console.error(`Error generating podcast title card image with primary model ${primaryModel}. No fallback attempted for this error type. Prompt:`, imagePrompt, "Full Error:", primaryError);
+      return null;
+    }
   }
 };

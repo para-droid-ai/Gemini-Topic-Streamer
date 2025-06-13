@@ -399,26 +399,25 @@ const StreamView: React.FC<StreamViewProps> = ({
 
     return (
       <div className="mt-1.5 pt-1 border-t border-gray-600">
-        <h6 className="text-xs font-semibold text-gray-400 mb-0.5">Sources:</h6>
-        <ul className="list-disc list-inside space-y-0.5">
+        <h6 className="text-xs font-semibold text-gray-400 mb-1">Sources:</h6>
+        <div className="flex flex-wrap gap-1.5 mt-0.5">
           {validSources.map((chunk, index) => {
              const sourceInfo = chunk.web || chunk.retrievedContext;
              if (!sourceInfo || !sourceInfo.uri || sourceInfo.uri === '#') return null;
              return (
-                <li key={`chat-grounding-${index}`} className="text-xs">
-                  <a
-                    href={sourceInfo.uri}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-300 hover:text-blue-200 hover:underline truncate block"
-                    title={sourceInfo.title || sourceInfo.uri}
-                  >
-                    {sourceInfo.title || sourceInfo.uri}
-                  </a>
-                </li>
+                <a
+                  key={`chat-grounding-${index}`}
+                  href={sourceInfo.uri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs bg-gray-600 hover:bg-gray-500 text-blue-300 hover:text-blue-200 px-1.5 py-0.5 rounded-full no-underline truncate block max-w-[120px] sm:max-w-[150px]"
+                  title={sourceInfo.title || sourceInfo.uri}
+                >
+                  {sourceInfo.title || new URL(sourceInfo.uri).hostname}
+                </a>
              );
           })}
-        </ul>
+        </div>
       </div>
     );
   };

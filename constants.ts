@@ -4,8 +4,8 @@ import { StreamContextPreference, StreamDetailLevel, ReasoningMode } from "./typ
 export const AVAILABLE_MODELS = [
   { id: "gemini-2.5-flash-preview-04-17", name: "Gemini 2.5 Flash (04-17)", supportsThinkingConfig: true, default: true },
   { id: "gemini-2.5-flash-preview-05-20", name: "Gemini 2.5 Flash (05-20)", supportsThinkingConfig: false, default: false },
-  { id: "gemini-2.5-pro-preview-05-06", name: "Gemini 2.5 Pro (05-06)", supportsThinkingConfig: false, default: false },
   { id: "gemini-2.5-pro-preview-06-05", name: "Gemini 2.5 Pro (06-05)", supportsThinkingConfig: false, default: false },
+  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", supportsThinkingConfig: false, default: false },
 ] as const;
 
 export type AvailableGeminiModelId = typeof AVAILABLE_MODELS[number]['id'];
