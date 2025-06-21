@@ -1,17 +1,20 @@
 
 import { StreamContextPreference, StreamDetailLevel, ReasoningMode } from "./types"; // StreamFrequency removed, Added ReasoningMode
 
+const DEFAULT_TEXT_MODEL_ID = 'gemini-2.5-flash-preview-04-17';
+
 export const AVAILABLE_MODELS = [
-  { id: "gemini-2.5-flash-preview-04-17", name: "Gemini 2.5 Flash (04-17)", supportsThinkingConfig: true, default: true },
-  { id: "gemini-2.5-flash-preview-05-20", name: "Gemini 2.5 Flash (05-20)", supportsThinkingConfig: false, default: false },
-  { id: "gemini-2.5-pro-preview-06-05", name: "Gemini 2.5 Pro (06-05)", supportsThinkingConfig: false, default: false },
-  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", supportsThinkingConfig: false, default: false },
+  { id: "gemini-2.5-flash-preview-04-17", name: "Gemini 2.5 Flash (04-17)", supportsThinkingConfig: true, default: DEFAULT_TEXT_MODEL_ID === "gemini-2.5-flash-preview-04-17" },
+  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", supportsThinkingConfig: true, default: (DEFAULT_TEXT_MODEL_ID as string) === "gemini-2.5-flash" },
+  { id: "gemini-2.5-flash-lite-preview-06-17", name: "Gemini 2.5 Flash Lite (06-17)", supportsThinkingConfig: true, default: (DEFAULT_TEXT_MODEL_ID as string) === "gemini-2.5-flash-lite-preview-06-17" },
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", supportsThinkingConfig: true, default: (DEFAULT_TEXT_MODEL_ID as string) === "gemini-2.5-pro" },
+  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", supportsThinkingConfig: false, default: (DEFAULT_TEXT_MODEL_ID as string) === "gemini-2.0-flash" },
 ] as const;
 
 export type AvailableGeminiModelId = typeof AVAILABLE_MODELS[number]['id'];
 
 export const DEFAULT_GEMINI_MODEL_ID: AvailableGeminiModelId = 
-    AVAILABLE_MODELS.find(m => m.default)?.id || "gemini-2.5-flash-preview-04-17";
+    AVAILABLE_MODELS.find(m => m.default)?.id || DEFAULT_TEXT_MODEL_ID;
 
 // GEMINI_MODEL_NAME is deprecated for stream-specific generation. Use stream.modelName or DEFAULT_GEMINI_MODEL_ID.
 // It's kept here for services like chat or prompt optimization that don't have per-stream model selection yet.

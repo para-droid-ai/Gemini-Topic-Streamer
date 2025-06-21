@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Fragment } from 'react';
+import React, { useState, useEffect, Fragment, useRef } from 'react';
 import { Stream, StreamDetailLevel, StreamContextPreference, AvailableGeminiModelId, ReasoningMode } from '../types';
 import { XMarkIcon, SparklesIcon, LoadingSpinner, ChevronDownIcon, ChevronUpIcon } from './icons';
 import { 
@@ -43,19 +43,37 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const selectedModelConfig = AVAILABLE_MODELS.find(m => m.id === modelName) || AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
-  const supportsThinkingConfig = selectedModelConfig?.supportsThinkingConfig || false;
+  // This is a derived constant, not state. It will update whenever modelName state changes.
+  const currentModelSupportsThinking = selectedModelConfig?.supportsThinkingConfig || false;
 
+  // Ref to store if the previous model supported thinking. Undefined means modal was closed or just opened.
+  const prevModelSupportedThinkingRef = useRef<boolean | undefined>(undefined);
 
+  // Effect 1: Initialize form when modal opens or stream/mode changes
   useEffect(() => {
     if (isOpen) {
+      let initialModelId: AvailableGeminiModelId;
+      let initialReasoning: ReasoningMode;
+      let initialModelSupportsThinking: boolean;
+
       if (mode === 'edit' && stream) {
         setName(stream.name);
         setFocus(stream.focus);
         setTemperature(stream.temperature ?? DEFAULT_TEMPERATURE);
         setDetailLevel(stream.detailLevel ?? DEFAULT_DETAIL_LEVEL);
         setContextPreference(stream.contextPreference ?? DEFAULT_CONTEXT_PREFERENCE);
-        setModelName(stream.modelName ?? DEFAULT_GEMINI_MODEL_ID);
-        setReasoningMode(stream.reasoningMode || DEFAULT_REASONING_MODE);
+        
+        initialModelId = stream.modelName ?? DEFAULT_GEMINI_MODEL_ID;
+        
+        const modelConfig = AVAILABLE_MODELS.find(m => m.id === initialModelId) || AVAILABLE_MODELS.find(m => m.id === DEFAULT_GEMINI_MODEL_ID);
+        initialModelSupportsThinking = modelConfig?.supportsThinkingConfig || false;
+
+        if (!initialModelSupportsThinking) {
+          initialReasoning = 'off';
+        } else {
+          initialReasoning = stream.reasoningMode || DEFAULT_REASONING_MODE;
+        }
+        
         setAutoThinkingBudget(stream.autoThinkingBudget ?? DEFAULT_AUTO_THINKING_BUDGET);
         setThinkingTokenBudget(stream.thinkingTokenBudget ?? DEFAULT_THINKING_TOKEN_BUDGET);
         setTopK(stream.topK);
@@ -67,18 +85,78 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
         setTemperature(DEFAULT_TEMPERATURE);
         setDetailLevel(DEFAULT_DETAIL_LEVEL);
         setContextPreference(DEFAULT_CONTEXT_PREFERENCE);
-        setModelName(DEFAULT_GEMINI_MODEL_ID);
-        setReasoningMode(DEFAULT_REASONING_MODE);
+        
+        initialModelId = DEFAULT_GEMINI_MODEL_ID;
+        const defaultAddModelConfig = AVAILABLE_MODELS.find(m => m.id === initialModelId);
+        initialModelSupportsThinking = defaultAddModelConfig?.supportsThinkingConfig || false;
+
+        if (!initialModelSupportsThinking) {
+          initialReasoning = 'off';
+        } else {
+          initialReasoning = DEFAULT_REASONING_MODE;
+        }
         setAutoThinkingBudget(DEFAULT_AUTO_THINKING_BUDGET);
         setThinkingTokenBudget(DEFAULT_THINKING_TOKEN_BUDGET);
         setTopK(undefined);
         setTopP(undefined);
         setSeed(undefined);
       }
+      
+      setModelName(initialModelId); // Set model name first
+      setReasoningMode(initialReasoning); // Then set reasoning mode based on it
+
+      prevModelSupportedThinkingRef.current = initialModelSupportsThinking; // Prime the ref
+
       setIsOptimizingFocus(false);
       setOptimizingFocusError(null);
+      // setShowAdvanced(false); // Consider resetting or not
+    } else {
+      // Modal is closed, reset the ref
+      prevModelSupportedThinkingRef.current = undefined;
     }
   }, [isOpen, stream, mode]);
+
+
+  // Effect 2: Handle reasoning mode changes dynamically when AI model selection (modelName) changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const prevSupport = prevModelSupportedThinkingRef.current;
+
+    // If prevSupport is undefined, it means Effect 1 (init) is responsible or just ran.
+    // This effect is for model *changes* after initialization.
+    if (prevSupport === undefined) {
+        // On the very first run where prevSupport is undefined (because Effect 1 set it),
+        // ensure the ref is correctly set to the current model's capability for the *next* change.
+        prevModelSupportedThinkingRef.current = currentModelSupportsThinking;
+        return;
+    }
+    
+    if (!currentModelSupportsThinking) {
+      // Current selected model does NOT support thinking.
+      if (reasoningMode !== 'off') { // Only change if it's not already 'off'.
+        setReasoningMode('off');
+      }
+    } else {
+      // Current selected model DOES support thinking.
+      // Check if the previous model did not support thinking AND current reasoning is 'off'.
+      if (prevSupport === false && reasoningMode === 'off') {
+        // This means we switched from a non-thinking model (which forced reasoning to 'off')
+        // to a thinking model. So, "toggle back on" to 'request'.
+        setReasoningMode('request');
+      }
+      // If prevSupport was true (thinking model to another thinking model),
+      // or if reasoningMode was already 'request', no automatic change is made here.
+      // This respects the user's explicit choice to set reasoningMode to 'off' for a thinking model.
+    }
+
+    // Update the ref with the current model's thinking support status for the next change cycle,
+    // but only if it has actually changed from the previous.
+    if (currentModelSupportsThinking !== prevSupport) {
+       prevModelSupportedThinkingRef.current = currentModelSupportsThinking;
+    }
+
+  }, [isOpen, modelName, currentModelSupportsThinking, reasoningMode]); // reasoningMode is included to correctly react if it's 'off' during a switch
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,7 +184,6 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
         ...commonData 
       });
     } else { 
-      // For 'add' mode, 'id', 'lastUpdated', 'pinnedChatMessages' are set in App.tsx
       onSave(commonData as Stream); 
     }
   };
@@ -189,7 +266,7 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
             <input type="range" id="modalStreamTemperature" min="0" max="2" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="mt-1 block w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
           </div>
           
-          <div className="p-3 rounded-md bg-gray-750">
+          <div className="p-3 rounded-md bg-gray-750 border border-gray-700">
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Model Reasoning (Thinking)
             </label>
@@ -207,30 +284,32 @@ const EditStreamModal: React.FC<EditStreamModalProps> = ({ isOpen, onClose, stre
               </button>
               <button
                 type="button"
-                onClick={() => setReasoningMode('request')}
+                onClick={() => { if (currentModelSupportsThinking) setReasoningMode('request'); }}
                 className={`flex-1 px-3 py-2 text-sm rounded-md transition-colors border flex flex-col items-center justify-center ${
-                  reasoningMode === 'request'
+                  reasoningMode === 'request' && currentModelSupportsThinking
                     ? 'bg-green-600 border-green-500 text-white'
                     : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-green-700'
-                }`}
+                } ${!currentModelSupportsThinking ? 'opacity-50 cursor-not-allowed' : '' }`}
+                disabled={!currentModelSupportsThinking}
+                title={!currentModelSupportsThinking ? "This model does not support reasoning control." : "Request model to show reasoning steps."}
               >
                 <span className="font-semibold">Request</span>
                 <span className="text-xs opacity-80 mt-0.5">
-                  {supportsThinkingConfig ? '(Recommended)' : '(Experimental)'}
+                  {currentModelSupportsThinking ? '(Recommended)' : '(Not Supported by Model)'}
                 </span>
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-2">
               "Request" asks the model to show its thought process using {'<think>'} tags.
               <br/>
-              <span className={supportsThinkingConfig ? 'text-green-400' : 'text-yellow-400'}>
-                {supportsThinkingConfig
-                  ? 'This model officially supports this feature.'
-                  : 'This model may provide reasoning at its discretion.'}
+              <span className={currentModelSupportsThinking ? 'text-green-400' : 'text-yellow-400'}>
+                {selectedModelConfig?.name || "This model"} {currentModelSupportsThinking
+                  ? 'officially supports this feature.'
+                  : 'may provide reasoning at its discretion or not at all.'}
               </span>
             </p>
 
-            {reasoningMode === 'request' && (
+            {reasoningMode === 'request' && currentModelSupportsThinking && (
               <div className="mt-3">
                 <div className="flex items-center justify-between mb-1">
                     <label htmlFor="modalThinkingTokenBudget" className="block text-sm font-medium text-gray-300">
